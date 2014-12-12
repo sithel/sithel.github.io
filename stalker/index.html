@@ -1,0 +1,56 @@
+<head>
+<title>Stecker's Stalker</title>
+<script type="text/javascript" src="snap.svg-min.js"></script>
+<script type="text/javascript" src="underscore-min.js"></script>
+<script type="text/javascript" src="knockout-3.2.0.js"></script>
+<script type="text/javascript" src="jquery-1.11.1.min.js"></script>
+<script type="text/javascript" src="moment-with-locales.min.js"></script>
+<script src="https://www.rdio.com/api/api.js?client_id=5LDYCAILB37SOCVk4qPh5A"></script>
+
+<style>
+  .person {
+    border: 1px solid black;
+    clear: both;
+    position: relative;
+  }
+  .person img {
+    width: 60px;
+    float: left;
+  }
+  .svg_track {
+    float: left;
+  }
+  .online-status-true {
+    background-color: rgba(62, 221, 118, 0.15);
+  }
+  .online-status-false {
+    background-color: rgba(239, 135, 154, 0.15);
+  }
+  .online-status-undefined {
+    background-color: rgba(232, 240, 100, 0.15);
+  }
+  img.source-icon {
+    position: absolute;
+    top: 5px;
+    right: 5px;
+  }
+  .history {
+    clear: both;
+    margin-left: 50px;
+  }
+  .history img {
+    float:left;
+  }
+  .track-title {
+    font-size: 12px;
+  }
+</style>
+</head>
+
+
+Yep, stuff is here.
+
+<div id="people"></div>
+<svg id="drawing" width=900 height=900></svg>
+<script type="text/javascript" src="dance.js"></script>
+<script type="text/javascript" src="follow.js"></script>

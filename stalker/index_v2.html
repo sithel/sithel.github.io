@@ -1,0 +1,339 @@
+<head>
+<title>Stecker's Stalker</title>
+<script type="text/javascript" src="snap.svg-min.js"></script>
+<script type="text/javascript" src="underscore-min.js"></script>
+<script type="text/javascript" src="knockout-3.2.0.js"></script>
+<script type="text/javascript" src="jquery-1.11.1.min.js"></script>
+<script type="text/javascript" src="moment-with-locales.min.js"></script>
+<script src="https://www.rdio.com/api/api.js?client_id=5LDYCAILB37SOCVk4qPh5A"></script>
+
+<style>
+  .person {
+    border: 1px solid black;
+    clear: both;
+    position: relative;
+  }
+  .person img {
+    width: 60px;
+    float: left;
+  }
+  .svg_track {
+    float: left;
+  }
+  .online-status-true {
+    background-color: rgba(62, 221, 118, 0.15);
+    border-top: 1px solid rgba(0, 0, 0, 0.46);
+    border-bottom: 1px solid rgba(0, 0, 0, 0.46);
+  }
+  .online-status-false {
+    background-color: rgba(239, 135, 154, 0.15);
+  }
+  .online-status-undefined {
+    background-color: rgba(232, 240, 100, 0.15);
+  }
+  img.source-icon {
+    position: absolute;
+    top: 5px;
+    right: 5px;
+  }
+  .history {
+    clear: both;
+    margin-left: 50px;
+  }
+  .history img {
+    float:left;
+  }
+  .track-title {
+    font-size: 12px;
+  }
+  .play-percent {
+    border: 1px solid rgba(0, 0, 0, 0.51);
+    border-radius: 41px;
+    padding: 5px;
+    background: rgba(255, 255, 255, 0.61);
+    height: 6px;
+    width: 6px;
+    display: inline-block;
+    text-align: left;
+    font-size: 10px;
+    line-height: 0.6;
+  }
+  .medium {
+    background-color: orange;
+  }
+  .low {
+    background-color: rgba(255, 0, 0, 0.37);
+  }
+  .v-low {
+    background-color: rgb(221, 15, 15);
+  }
+  .max {
+    background: rgba(71, 203, 6, 0.39);
+    padding-right: 15px;
+  }
+  .data-type {
+    border: 1px solid black;
+    line-height: 1;
+    display: inline-block;
+    padding: 0px 2px;
+    background: rgba(181, 47, 181, 0.4);
+  }
+  .source-a {
+    background: rgba(47, 104, 168, 0.45);
+  }
+  .source-p {
+    background: rgba(12, 184, 0, 0.63);
+  }
+  .source-t {
+    background: yellow;
+  }
+  .source-tp {
+    background: pink;
+  }
+</style>
+</head>
+
+
+Yep, stuff is here.
+
+
+yo
+
+<select data-bind="options: friends, optionsText: 'name', value: activeDude"></select>
+<button data-bind="enable: activeDude, click: resetFriend">Clear</button>
+<p data-bind="with: activeDude">
+  You have chosen <b data-bind="text: name"></b>
+</p>
+
+
+<ul data-bind="foreach: friends">
+  <li data-bind="css: { 
+    'online-status-true': isOnline(),
+    'online-status-false': !isOnline(),
+    'online-status-undefined': !_.isBoolean(isOnline()) }">
+    <span data-bind="text: name"></span> 
+    <i>(<span data-bind="text: key"></span> )</i> 
+    -- 
+    "<b><span data-bind="text: track() ? track().name : 'foo'"></span></b>"
+    from
+    "<span data-bind="text: track() ? track().album : 'bar'"></span>"
+    by 
+    "<span data-bind="text: track() ? track().artist : 'baz'"></span>"
+    [
+    "<i><span data-bind="text: source() ? source().name : 'bip'"></span></i>"
+    <span data-bind="
+      text: source() ? source().type : 'bam',
+      css: {
+        'data-type': true,
+        'source-a': source() && source().type == 'a',
+        'source-t':source() && source().type == 't',
+        'source-p': source() && source().type == 'p',
+        'source-ap': source() && source().type == 'ap',
+        'source-tp': source() && source().type == 'tp',
+        'source-rr': source() && source().type == 'rr'
+      }
+    "></span>
+    ]
+    --
+    <span data-bind="text: track()
+      ? moment.duration(track().duration, 'seconds').minutes() + ':' + moment.duration(track().duration, 'seconds').seconds()
+      : 'poo'"></span>
+    --
+    <span data-bind="text: stallTime, attr: { title: time }"></span>
+    <button data-bind="click: moveToTop">^</button>
+    <ul data-bind="foreach: history">
+      <li>
+        <b><span data-bind="text: $data.track.name"></span></b> by <span data-bind="text: $data.track.artist"></span>
+        from
+        [
+        "<i><span data-bind="text: $data.source.name"></span></i>"
+        <div data-bind="
+            text: $data.source.type,
+            css: {
+              'data-type': true,
+              'source-a': $data.source.type == 'a',
+              'source-t': $data.source.type == 't',
+              'source-p': $data.source.type == 'p',
+              'source-ap': $data.source.type == 'ap',
+              'source-tp': $data.source.type == 'tp',
+              'source-rr': $data.source.type == 'rr'
+            }
+          "></div>
+        ]
+        <span data-bind="text: $data.time"></span>
+        <div data-bind="
+            css: {
+              'play-percent': true,
+              'v-low': $data.percent < 0.1,
+              'low': $data.percent < 0.45,
+              'medium': $data.percent < 0.75,
+              'max': $data.percent > 0.95
+            },
+            text: Math.round($data.percent * 100)
+          "></div>
+      </li>
+    </ul>
+  </li>
+</ul>
+
+<script>
+function FriendsVM(){
+  this.time = ko.observable();
+  this.friends = ko.observableArray([]);
+  this.activeDude = ko.observable();
+  this.resetFriend = function() {
+    this.activeDude(null);
+  }
+}
+
+var reb = {
+  vm: null,             // created in followReady
+  vmFriendLookup: {},   // look up users by id
+  start: function(){
+    console.log("Stuff started");
+    if(reb.TRACKING) {
+      R.currentUser.trackFollowing(reb.followReady);
+    }
+  },
+  TRACKING: true,
+  handleMoveToTop: function(key) {
+    return function() {
+      var index = _.reduce(reb.vm.friends(), function(memo, vm, index) {
+        if (vm.key() == key)
+          return index;
+        return memo;
+      }, -1);
+      if (index == -1) {
+        console.error("well fuck, I couldn't find the index for key ",key);
+        return;
+      }
+      var vm = reb.vm.friends.splice(index, 1);
+      reb.vm.friends.unshift(vm[0]);
+    }
+  },
+  tickThatTime: function() {
+    console.log(" ... tick ..")
+    reb.vm.time(new Date());
+  },
+  followReady: function() {
+    console.log("Following is initialized: ", R.currentUser.get('following').models);
+    reb.vm = new FriendsVM();
+    reb.people = R.currentUser.get('following').models;
+    _.each(reb.people, function(p, index){
+      var tmpFunc = function TempVM() {
+        this.name = ko.observable(p.get('firstName')),
+        this.key = ko.observable(p.get('key')),
+        this.track = ko.observable(null),
+        this.time = ko.observable(null),
+        this.source = ko.observable(null),
+        this.isOnline = ko.observable(null),
+        this.history = ko.observableArray([]),
+        this.moveToTop = reb.handleMoveToTop(p.get('key')),
+        this.startTime = ko.observable(null),
+        this.stallTime = ko.computed(function() {
+          if (!reb.vm.time() || !this.time())
+            return 'TBD';
+          var mome = moment.duration(new Date(this.time()).getTime() - reb.vm.time().getTime())
+          return mome.humanize(true);
+        }, this);
+        this.p = p
+      };
+      var vm = new tmpFunc();
+      p.on('change:lastSongPlayed', reb.buildRef(vm, reb.handleSongChange));
+      p.on('change:lastSongPlayTime', reb.buildRef(vm, reb.handleSongTimeChange));
+      p.on('change:lastSourcePlayed', reb.buildRef(vm, reb.handleSourceChange));
+      p.on('change:online', reb.buildRef(vm, reb.handleOnlineChange));
+      reb.vm.friends.push(vm);
+      reb.vmFriendLookup[vm.key] = vm
+
+      p.trackField('lastSongPlayed');
+      p.trackField('lastSongPlayTime');
+      p.trackField('lastSourcePlayed');
+      p.trackPresence()
+    });
+    ko.applyBindings(reb.vm);
+    setInterval(reb.tickThatTime, 1000*10);
+  },
+  buildRef: function(vm, callback) {
+    return function() {
+      var args = [].slice.call(arguments);
+      args.unshift(vm);
+      callback.apply(null, args);
+    };
+  },
+  handleSongChange: function(vm, track) {
+    console.log("Arguments for 'handleSongChange' : ",arguments, " [[ ",vm.name(),"]]");
+    var oldTime = vm.startTime();
+    if (!oldTime)
+      oldTime = new Date();
+    if (vm.track() && vm.track().name) {
+      var trackDuration = vm.track().duration
+      var diff = new Date().getTime() - oldTime.getTime();
+      var time = moment.duration(diff).humanize();
+      var percent = Math.min(1, (diff/1000)/trackDuration);
+      console.warn("Tracking time... I have oldTime [",oldTime,"], diff [",diff,"], track duration [",trackDuration,"], duration [",moment.duration(diff),"], percent [",percent,"], time [",time,"], now [",new Date(),"]")
+      var record = {
+        track: vm.track(),
+        source: vm.source(),
+        time: time,
+        percent: percent
+      };
+      vm.history.unshift(record);
+    }
+    vm.startTime(new Date())
+    vm.track(reb.extractTrackData(track));
+  },
+  handleOnlineChange: function(vm, online) {
+    console.log("Arguments for 'handleOnlineChange' : ",arguments, " [[ ",vm.name(),"]]");
+    vm.isOnline(online);
+  },
+  handleSongTimeChange: function(vm, timeStr) {
+    // TODO : log the track as a repeat if we don't get a sufficiantly soon track change
+    console.log("Arguments for 'handleSongTimeChange' : ",arguments, " [[ ",vm.name(),"]]");
+    vm.time(timeStr);
+  },
+  handleSourceChange: function(vm, source) {
+    console.log("Arguments for 'handleSourceChange' : ",arguments, " [[ ",vm.name(),"]]");
+    vm.source(reb.extractSourceData(source));
+  },
+  extractSourceData: function(source){
+    if (source)
+      return {
+        name: source.name,
+        type: source.type
+      }
+    return {
+      name: undefined,
+      type: undefined
+    }
+  },
+  extractTrackData: function(track) {
+    if (track)
+      return {
+        name: track.name,
+        artist: track.artist,
+        album: track.album,
+        key: track.key,
+        duration: track.duration,
+      }
+    return {
+      name: undefined,
+      artist: undefined,
+      album: undefined,
+      key: undefined,
+      duration: 1
+    }
+  },
+  people: null,
+
+  FAKE_END: false
+}
+R.ready(reb.start)
+</script>
+
+
+
+<div id="people"></div>
+<svg id="drawing" width=900 height=900></svg>
+<!-- <script type="text/javascript" src="dance.js"></script>
+<script type="text/javascript" src="follow.js"></script> -->
