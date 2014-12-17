@@ -90,6 +90,9 @@
   .source-tp {
     background: pink;
   }
+  .source-change {
+    border-bottom: 5px solid rgba(218, 28, 122, 0.23);
+  }
 </style>
 </head>
 
@@ -142,7 +145,13 @@ yo
     <span data-bind="text: stallTime, attr: { title: time }"></span>
     <button data-bind="click: moveToTop">^</button>
     <ul data-bind="foreach: history">
-      <li>
+      <li data-bind="
+            css: {
+              'test-class': true,
+              'source-change': $data.sourceChange
+            }
+          ">
+        <span data-bind="text: $data.sourceChange"></span>
         <b><span data-bind="text: $data.track.name"></span></b> by <span data-bind="text: $data.track.artist"></span>
         from
         [
@@ -264,9 +273,14 @@ var reb = {
   handleSongChange: function(vm, track) {
     console.log("Arguments for 'handleSongChange' : ",arguments, " [[ ",vm.name(),"]]");
     var oldTime = vm.startTime();
+    var sourceChange = false;
     if (!oldTime)
       oldTime = new Date();
     if (vm.track() && vm.track().name) {
+      var prevRecord = (vm.history().length > 0) ? vm.history()[0] : null;
+      if (prevRecord && vm.source().key != prevRecord.source.key) {
+        sourceChange = vm.source().type != 't' && prevRecord.source.type != 't'
+      }
       var trackDuration = vm.track().duration
       var diff = new Date().getTime() - oldTime.getTime();
       var time = moment.duration(diff).humanize();
@@ -276,7 +290,8 @@ var reb = {
         track: vm.track(),
         source: vm.source(),
         time: time,
-        percent: percent
+        percent: percent,
+        sourceChange: sourceChange
       };
       vm.history.unshift(record);
     }
@@ -300,11 +315,13 @@ var reb = {
     if (source)
       return {
         name: source.name,
-        type: source.type
+        type: source.type,
+        key: source.key
       }
     return {
       name: undefined,
-      type: undefined
+      type: undefined,
+      key: undefined
     }
   },
   extractTrackData: function(track) {
