@@ -1,5 +1,5 @@
 <head>
-<title>Stecker's Stalker</title>
+<title>Stalk like Stecker</title>
 <script type="text/javascript" src="snap.svg-min.js"></script>
 <script type="text/javascript" src="underscore-min.js"></script>
 <script type="text/javascript" src="knockout-3.2.0.js"></script>
@@ -8,6 +8,10 @@
 <script src="https://www.rdio.com/api/api.js?client_id=5LDYCAILB37SOCVk4qPh5A"></script>
 
 <style>
+  a {
+    color: black;
+    text-decoration: none;
+  }
   .person {
     border: 1px solid black;
     clear: both;
@@ -93,10 +97,36 @@
   .source-change {
     border-bottom: 5px solid rgba(218, 28, 122, 0.23);
   }
+  .magic-hover {
+    position: fixed;
+    border: 2px solid black;
+    bottom: 0px;
+    right: 0px;
+    padding: 0px;
+    margin: 0px;
+  }
+  .attribution {
+    float: right;
+    text-transform: uppercase;
+    font-family: sans-serif;
+    font-size: 12px;
+  }
+  .auth-box {
+    text-transform: uppercase;
+    border: 10px solid rgb(165, 10, 10);
+    background: red;
+    text-align: center;
+    font-family: monospace;
+    font-size: 50px;
+  }
 </style>
 </head>
-
-
+<body>
+<div class="attribution">powered by <a href="http://www.rdio.com">Rdio.com</a></div>
+<div class="magic-hover" data-bind="visible: icon">
+  <img data-bind="attr: {src: icon, width: iconSmall() ? '100px' : '200px'}">
+</div>
+<!--
 Yep, stuff is here.
 
 
@@ -107,23 +137,34 @@ yo
 <p data-bind="with: activeDude">
   You have chosen <b data-bind="text: name"></b>
 </p>
-
-
-<ul data-bind="foreach: friends">
+-->
+If you want to sync your listening, use <a href="http://eavesdrop.io">eavesdrop.io</a> for now (will add feature eventually)
+<p>
+<ul class="people-block" data-bind="foreach: friends">
   <li data-bind="css: { 
     'online-status-true': isOnline(),
     'online-status-false': !isOnline(),
     'online-status-undefined': !_.isBoolean(isOnline()) }">
-    <span data-bind="text: name"></span> 
+    <a data-bind="
+      text: name,
+      attr: { title: fullName, href: url },
+      event: { mouseover: hoverOver, mouseout: hoverOut }
+    " target="_blank" class="user"></a>
     <i>(<span data-bind="text: key"></span> )</i> 
     -- 
-    "<b><span data-bind="text: track() ? track().name : 'foo'"></span></b>"
+    "<a class="track" data-bind="
+      attr: { href: track() ? track().url : 'bat' },
+      event: { mouseover: hoverOver, mouseout: hoverOut }
+    " target="_blank"><b><span data-bind="text: track() ? track().name : 'foo'"></span></b></a>"
     from
     "<span data-bind="text: track() ? track().album : 'bar'"></span>"
     by 
     "<span data-bind="text: track() ? track().artist : 'baz'"></span>"
     [
-    "<i><span data-bind="text: source() ? source().name : 'bip'"></span></i>"
+    "<a class="source" data-bind="
+      attr: { href: source() ? source().url : 'bat' },
+      event: { mouseover: hoverOver, mouseout: hoverOut }
+    " target="_blank"><i><span data-bind="text: source() ? source().name : 'bip'"></span></i></a>"
     <span data-bind="
       text: source() ? source().type : 'bam',
       css: {
@@ -134,7 +175,8 @@ yo
         'source-ap': source() && source().type == 'ap',
         'source-tp': source() && source().type == 'tp',
         'source-rr': source() && source().type == 'rr'
-      }
+      },
+      attr: { title: source() ? source().key : 'bob' }
     "></span>
     ]
     --
@@ -151,11 +193,18 @@ yo
               'source-change': $data.sourceChange
             }
           ">
-        <span data-bind="text: $data.sourceChange"></span>
-        <b><span data-bind="text: $data.track.name"></span></b> by <span data-bind="text: $data.track.artist"></span>
+        <b><a class="track" data-bind="
+          text: $data.track.name,
+          event: { mouseover: $parent.hoverOver, mouseout: $parent.hoverOut },
+          attr: {href: $data.track.url, 'data-i': $index }
+          "></a></b> by <span data-bind="text: $data.track.artist"></span>
         from
         [
-        "<i><span data-bind="text: $data.source.name"></span></i>"
+        "<i><a class="source" data-bind="
+          text: $data.source.name,
+          event: { mouseover: $parent.hoverOver, mouseout: $parent.hoverOut },
+          attr: {href: $data.source.url, 'data-i': $index }
+          "></a></i>"
         <div data-bind="
             text: $data.source.type,
             css: {
@@ -188,6 +237,8 @@ yo
 <script>
 function FriendsVM(){
   this.time = ko.observable();
+  this.icon = ko.observable(false);
+  this.iconSmall = ko.observable(false);
   this.friends = ko.observableArray([]);
   this.activeDude = ko.observable();
   this.resetFriend = function() {
@@ -199,10 +250,16 @@ var reb = {
   vm: null,             // created in followReady
   vmFriendLookup: {},   // look up users by id
   start: function(){
-    console.log("Stuff started");
-    if(reb.TRACKING) {
+    console.log("Stuff started : ", R.authenticated());
+    if (!R.authenticated()) {
+      $('.people-block').html("");
+      $("body").prepend("<div onclick='reb.auth()' class='auth-box'>Click to authenticate</div>")
+    } else if(reb.TRACKING) {
       R.currentUser.trackFollowing(reb.followReady);
     }
+  },
+  auth: function(){
+    R.authenticate({mode: 'redirect'});
   },
   TRACKING: true,
   handleMoveToTop: function(key) {
@@ -224,13 +281,40 @@ var reb = {
     console.log(" ... tick ..")
     reb.vm.time(new Date());
   },
+  handleHoverOver: function(vm, e){
+    console.log("I SEE A HOVER OVER : ", arguments);
+    reb.vm.iconSmall(false);
+    if (_.isNumber($(e.target).closest('.source').data('i'))) {
+      // we're in a history item if there's a data-i
+      reb.vm.icon(vm.source.icon);
+    } else if ($(e.target).closest('.source').length && vm.source()) {
+      reb.vm.icon(vm.source().icon);
+    } else if (_.isNumber($(e.target).closest('.track').data('i'))) {
+      // we're in a history item if there's a data-i
+      reb.vm.icon(vm.track.icon);
+    } else if ($(e.target).closest('.track').length && vm.track()) {
+      reb.vm.icon(vm.track().icon);
+    } else if ($(e.target).closest('.user').length) {
+      reb.vm.iconSmall(true);
+      reb.vm.icon(vm.icon());
+    }
+  },
+  handleHoverOut: function(vm, e){
+    console.log("I SEE A HOVER OUT : ", arguments);
+    reb.vm.icon(false);
+  },
   followReady: function() {
     console.log("Following is initialized: ", R.currentUser.get('following').models);
     reb.vm = new FriendsVM();
     reb.people = R.currentUser.get('following').models;
     _.each(reb.people, function(p, index){
       var tmpFunc = function TempVM() {
+        this.hoverOver = reb.handleHoverOver,
+        this.hoverOut = reb.handleHoverOut,
         this.name = ko.observable(p.get('firstName')),
+        this.icon = ko.observable(p.get('icon')),
+        this.url = ko.observable("http://www.rdio.com"+p.get('url')),
+        this.fullName = ko.observable(p.get('firstName') + " " + p.get('lastName')),
         this.key = ko.observable(p.get('key')),
         this.track = ko.observable(null),
         this.time = ko.observable(null),
@@ -253,7 +337,7 @@ var reb = {
       p.on('change:lastSourcePlayed', reb.buildRef(vm, reb.handleSourceChange));
       p.on('change:online', reb.buildRef(vm, reb.handleOnlineChange));
       reb.vm.friends.push(vm);
-      reb.vmFriendLookup[vm.key] = vm
+      reb.vmFriendLookup[vm.key()] = vm
 
       p.trackField('lastSongPlayed');
       p.trackField('lastSongPlayTime');
@@ -279,7 +363,7 @@ var reb = {
     if (vm.track() && vm.track().name) {
       var prevRecord = (vm.history().length > 0) ? vm.history()[0] : null;
       if (prevRecord && vm.source().key != prevRecord.source.key) {
-        sourceChange = vm.source().type != 't' && prevRecord.source.type != 't'
+        sourceChange = vm.source().type != 't' || prevRecord.source.type != 't';
       }
       var trackDuration = vm.track().duration
       var diff = new Date().getTime() - oldTime.getTime();
@@ -316,12 +400,16 @@ var reb = {
       return {
         name: source.name,
         type: source.type,
-        key: source.key
+        key: source.key,
+        url: source.shortUrl,
+        icon: source.icon,
+        bob: source
       }
     return {
       name: undefined,
       type: undefined,
-      key: undefined
+      key: undefined,
+      url: undefined
     }
   },
   extractTrackData: function(track) {
@@ -332,13 +420,18 @@ var reb = {
         album: track.album,
         key: track.key,
         duration: track.duration,
+        url: track.shortUrl,
+        icon: track.icon,
+        bob: track
       }
     return {
       name: undefined,
       artist: undefined,
       album: undefined,
       key: undefined,
-      duration: 1
+      duration: 1,
+      icon: false,
+      url: undefined
     }
   },
   people: null,
@@ -351,6 +444,9 @@ R.ready(reb.start)
 
 
 <div id="people"></div>
-<svg id="drawing" width=900 height=900></svg>
 <!-- <script type="text/javascript" src="dance.js"></script>
 <script type="text/javascript" src="follow.js"></script> -->
+<p>
+<br><br><br><br><br><br><br><br>
+last updated: January 5th 2015
+</body>
