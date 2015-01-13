@@ -5,6 +5,7 @@
 <script type="text/javascript" src="knockout-3.2.0.js"></script>
 <script type="text/javascript" src="jquery-1.11.1.min.js"></script>
 <script type="text/javascript" src="moment-with-locales.min.js"></script>
+<script type="text/javascript" src="listener.js"></script>
 <script src="https://www.rdio.com/api/api.js?client_id=5LDYCAILB37SOCVk4qPh5A"></script>
 
 <style>
@@ -46,6 +47,18 @@
   }
   .history img {
     float:left;
+  }
+  li.hide-history {
+    height: 1px;
+    overflow: hidden;
+    border: 0px;
+    width: 200px;
+  }
+  .hide-history:nth-child(even) {
+    background: black;
+  }
+  .hide-history:nth-child(odd) {
+    background: white;
   }
   .track-title {
     font-size: 12px;
@@ -119,10 +132,50 @@
     font-family: monospace;
     font-size: 50px;
   }
+  .play-button {
+    display: inline-block;
+    font-size: 11px;
+    background: rgb(7, 141, 210);
+    border-radius: 10px;
+    opacity: 0;
+    width: 17px;
+    text-align: center;
+    color: white;
+    padding: 1px;
+  }
+  .play-button:hover {
+    opacity: 1;
+  }
+  .full-history-toggle {
+    font-style: italic;
+    text-transform: uppercase;
+    font-weight: bold;
+    font-size: 10px;
+    padding: 0px 5px;
+    border-radius: 10px;
+    color: white;
+    display: none;
+  }
+  .show-history {
+    display: inline-block;
+    border: 2px solid rgba(29, 186, 138, 0.49);
+    background: rgb(29, 186, 138);
+  }
+  .reduce-history {
+    display: inline-block;
+    border: 2px solid rgba(186, 101, 29, 0.5);
+    background: rgb(186, 101, 29);
+  }
 </style>
 </head>
 <body>
-<div class="attribution">powered by <a href="http://www.rdio.com">Rdio.com</a></div>
+  <script type="text/javascript" src="../mespeak/mespeak.js"></script>
+  <script type="text/javascript">
+    meSpeak.loadConfig("../mespeak/mespeak_config.json");
+    meSpeak.loadVoice("../mespeak/voices/en/en.json");
+    meSpeak.speak('hello world');
+  </script>
+<div class="attribution">powered by <a target="_blank" href="http://www.rdio.com">Rdio.com</a></div>
 <div class="magic-hover" data-bind="visible: icon">
   <img data-bind="attr: {src: icon, width: iconSmall() ? '100px' : '200px'}">
 </div>
@@ -138,33 +191,33 @@ yo
   You have chosen <b data-bind="text: name"></b>
 </p>
 -->
-If you want to sync your listening, use <a href="http://eavesdrop.io">eavesdrop.io</a> for now (will add feature eventually)
+If you want to sync your listening, use <a target="_blank" href="http://eavesdrop.io">eavesdrop.io</a> for now (will add feature eventually)
 <p>
 <ul class="people-block" data-bind="foreach: friends">
   <li data-bind="css: { 
     'online-status-true': isOnline(),
     'online-status-false': !isOnline(),
     'online-status-undefined': !_.isBoolean(isOnline()) }">
-    <a data-bind="
+    <a target="_blank" data-bind="
       text: name,
       attr: { title: fullName, href: url },
       event: { mouseover: hoverOver, mouseout: hoverOut }
-    " target="_blank" class="user"></a>
+    " class="user"></a>
     <i>(<span data-bind="text: key"></span> )</i> 
     -- 
-    "<a class="track" data-bind="
+    "<a target="_blank" class="track" data-bind="
       attr: { href: track() ? track().url : 'bat' },
       event: { mouseover: hoverOver, mouseout: hoverOut }
-    " target="_blank"><b><span data-bind="text: track() ? track().name : 'foo'"></span></b></a>"
+    "><b><span data-bind="text: track() ? track().name : 'foo'"></span></b></a>"
     from
     "<span data-bind="text: track() ? track().album : 'bar'"></span>"
     by 
     "<span data-bind="text: track() ? track().artist : 'baz'"></span>"
     [
-    "<a class="source" data-bind="
+    "<a target="_blank" class="source" data-bind="
       attr: { href: source() ? source().url : 'bat' },
       event: { mouseover: hoverOver, mouseout: hoverOut }
-    " target="_blank"><i><span data-bind="text: source() ? source().name : 'bip'"></span></i></a>"
+    "><i><span data-bind="text: source() ? source().name : 'bip'"></span></i></a>"
     <span data-bind="
       text: source() ? source().type : 'bam',
       css: {
@@ -186,21 +239,31 @@ If you want to sync your listening, use <a href="http://eavesdrop.io">eavesdrop.
     --
     <span data-bind="text: stallTime, attr: { title: time }"></span>
     <button data-bind="click: moveToTop">^</button>
+    <div data-bind="
+      text: showAllHistory() ? 'reduce history' : 'full history ('+history().length+')',
+      click: toggleShowAllHistory,
+      css: {
+        'full-history-toggle': true,
+        'reduce-history': showAllHistory() && history().length > 10,
+        'show-history': !showAllHistory() && history().length > 10
+      }"></div>
     <ul data-bind="foreach: history">
       <li data-bind="
             css: {
               'test-class': true,
-              'source-change': $data.sourceChange
+              'source-change': $data.sourceChange,
+              'hide-history': !$parent.showAllHistory() && $index() >= 10
             }
           ">
-        <b><a class="track" data-bind="
+        <div data-bind="click: $parent.playSingle" class="play-button">&#9835;</div>
+        <b><a target="_blank" class="track" data-bind="
           text: $data.track.name,
           event: { mouseover: $parent.hoverOver, mouseout: $parent.hoverOut },
           attr: {href: $data.track.url, 'data-i': $index }
           "></a></b> by <span data-bind="text: $data.track.artist"></span>
         from
         [
-        "<i><a class="source" data-bind="
+        "<i><a target="_blank" class="source" data-bind="
           text: $data.source.name,
           event: { mouseover: $parent.hoverOver, mouseout: $parent.hoverOut },
           attr: {href: $data.source.url, 'data-i': $index }
@@ -281,8 +344,36 @@ var reb = {
     console.log(" ... tick ..")
     reb.vm.time(new Date());
   },
+  handlePlaySingle: function(vm, e) {
+    console.log("Rebecca, I saw a play click for ", vm," w/ ", e);
+    source_type = vm.source.bob.type;
+    start_second = Math.round(vm.track.duration * Math.random() * 0.3 + 0.1)
+    if (source_type == 'a') {
+      sourceIndex = vm.source.bob.trackKeys.indexOf(vm.track.bob.key);
+      console.log("Playing type '"+source_type+"' w/ index of '"+sourceIndex+"' @ "+start_second+" :: ",vm);
+      R.player.play({source: vm.source.bob.key, index: sourceIndex, initialPosition: start_second});
+    } else if (source_type == 'p') {
+      R.request({
+        method: "get",
+        content: {
+          keys: vm.source.bob.key,
+          extras: '-*,trackKeys'
+        },
+        success: function(response) {
+          sourceIndex = response.result[vm.source.bob.key].trackKeys.indexOf(vm.track.bob.key);
+          console.log("Playing type '"+source_type+"' w/ index of '"+sourceIndex+"' @ "+start_second+" :: ",vm);
+          R.player.play({source: vm.source.bob.key, index: sourceIndex, initialPosition: start_second});
+        },
+        error: function(response) {
+          console.log("error: " + response.message);
+        }
+      });
+    } else {
+      console.log("Straight up playing '"+vm.track.bob.key+"' @ "+start_second);
+      R.player.play({ source: vm.track.bob.key, initialPosition: start_second});
+    }
+  },
   handleHoverOver: function(vm, e){
-    console.log("I SEE A HOVER OVER : ", arguments);
     reb.vm.iconSmall(false);
     if (_.isNumber($(e.target).closest('.source').data('i'))) {
       // we're in a history item if there's a data-i
@@ -300,7 +391,6 @@ var reb = {
     }
   },
   handleHoverOut: function(vm, e){
-    console.log("I SEE A HOVER OUT : ", arguments);
     reb.vm.icon(false);
   },
   followReady: function() {
@@ -308,9 +398,15 @@ var reb = {
     reb.vm = new FriendsVM();
     reb.people = R.currentUser.get('following').models;
     _.each(reb.people, function(p, index){
+      if (index > 5 && index < reb.people.length-2) 
+        return;
       var tmpFunc = function TempVM() {
+        this.playSingle = reb.handlePlaySingle,
         this.hoverOver = reb.handleHoverOver,
         this.hoverOut = reb.handleHoverOut,
+        this.toggleShowAllHistory = reb.handleToggleShowAllHistory,
+
+        this.showAllHistory = ko.observable(false),
         this.name = ko.observable(p.get('firstName')),
         this.icon = ko.observable(p.get('icon')),
         this.url = ko.observable("http://www.rdio.com"+p.get('url')),
@@ -353,6 +449,9 @@ var reb = {
       args.unshift(vm);
       callback.apply(null, args);
     };
+  },
+  handleToggleShowAllHistory: function(vm, e) {
+    vm.showAllHistory(!vm.showAllHistory())
   },
   handleSongChange: function(vm, track) {
     console.log("Arguments for 'handleSongChange' : ",arguments, " [[ ",vm.name(),"]]");
@@ -448,5 +547,27 @@ R.ready(reb.start)
 <script type="text/javascript" src="follow.js"></script> -->
 <p>
 <br><br><br><br><br><br><br><br>
-last updated: January 5th 2015
+
+Source types: 
+  <div class="data-type source-a">album</div>
+  <div class="data-type source-t">single track</div>
+  <div class="data-type source-p">playlist</div>
+  <div class="data-type source-ap">AutoPlay</div>
+  <div class="data-type source-tp">YouFM</div>
+  <div class="data-type source-rr">Artist Station</div>
+  <div class="data-type">Other</div>
+  <p>
+Percentage of track completed:
+  <div style="width: 50px;text-align: center;" class="play-percent v-low"> x &lt; 0.1 </div>
+  <div style="width: 75px;text-align: center;" class="play-percent low"> 0.1 &le; x &lt; 0.45 </div>
+  <div style="width: 75px;text-align: center;" class="play-percent medium"> 0.45 &le; x &lt; 0.75 </div>
+  <div style="width: 75px;text-align: center;" class="play-percent ">0.75 &le; x &le; 0.95 </div>
+  <div style="width: 50px;text-align: center;" class="play-percent max"> x &gt; 0.95 </div>
+  <p>
+Online Status:
+  <div class='online-status-true'>Online</div>
+  <div class='online-status-false'>Offline</div>
+  <div class='online-status-undefined'>Unknown</div>
+<p>
+last updated: January 13th 2015
 </body>
