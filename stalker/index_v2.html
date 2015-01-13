@@ -134,17 +134,39 @@
   }
   .play-button {
     display: inline-block;
-    font-size: 11px;
+    font-size: 8px;
     background: rgb(7, 141, 210);
     border-radius: 10px;
     opacity: 0;
-    width: 17px;
+    width: 12px;
     text-align: center;
     color: white;
     padding: 1px;
+    vertical-align: middle;
   }
   .play-button:hover {
     opacity: 1;
+  }
+  .play-status {
+    border: 1px solid black;
+    text-align: center;
+    border-radius: 7px;
+    border-color: rgba(195, 50, 50, 0.54);
+    position: fixed;
+    left: 0px;
+    display: none;
+  }
+  .play-status.is-master {
+    border-color: rgba(30, 150, 11, 0.54);
+  }
+  .play-state-1 {
+    display: inline-block;
+    padding: 3px 4px 2px 5px;
+  }
+  .play-state-0 {
+    display: inline-block;
+    padding: 4px 6px 4px 2px;
+    font-size: 11px;
   }
   .full-history-toggle {
     font-style: italic;
@@ -193,6 +215,11 @@ yo
 -->
 If you want to sync your listening, use <a target="_blank" href="http://eavesdrop.io">eavesdrop.io</a> for now (will add feature eventually)
 <p>
+<div data-bind="
+  click: togglePlay,
+  css: { 'is-master': isMaster, 'play-state-1': playstate() == 1, 'play-state-0': playstate() == 0},
+  text: (playstate() == 1) ? '&#9654;' : '&#9616;&#9616;'
+  " class="play-status"></div>
 <ul class="people-block" data-bind="foreach: friends">
   <li data-bind="css: { 
     'online-status-true': isOnline(),
@@ -205,6 +232,7 @@ If you want to sync your listening, use <a target="_blank" href="http://eavesdro
     " class="user"></a>
     <i>(<span data-bind="text: key"></span> )</i> 
     -- 
+    <div data-bind="click: playSingle" class="play-button">&#9835;</div>
     "<a target="_blank" class="track" data-bind="
       attr: { href: track() ? track().url : 'bat' },
       event: { mouseover: hoverOver, mouseout: hoverOut }
@@ -247,7 +275,7 @@ If you want to sync your listening, use <a target="_blank" href="http://eavesdro
         'reduce-history': showAllHistory() && history().length > 10,
         'show-history': !showAllHistory() && history().length > 10
       }"></div>
-    <ul data-bind="foreach: history">
+    <ul data-bind="foreach: history" style="-webkit-padding-start: 7px;">
       <li data-bind="
             css: {
               'test-class': true,
@@ -299,6 +327,8 @@ If you want to sync your listening, use <a target="_blank" href="http://eavesdro
 
 <script>
 function FriendsVM(){
+  this.playstate = ko.observable(R.player.PLAYSTATE_STOPPED);
+  this.isMaster = ko.observable(false);
   this.time = ko.observable();
   this.icon = ko.observable(false);
   this.iconSmall = ko.observable(false);
@@ -306,6 +336,10 @@ function FriendsVM(){
   this.activeDude = ko.observable();
   this.resetFriend = function() {
     this.activeDude(null);
+  }
+  this.togglePlay = function(vm) {
+    console.log("We just clicked toggle play ", vm);
+    R.player.togglePause()
   }
 }
 
@@ -345,32 +379,34 @@ var reb = {
     reb.vm.time(new Date());
   },
   handlePlaySingle: function(vm, e) {
+    var source = _.isFunction(vm.source) ? vm.source() : vm.source.bob
+    var track = _.isFunction(vm.track) ? vm.track() : vm.track.bob
     console.log("Rebecca, I saw a play click for ", vm," w/ ", e);
-    source_type = vm.source.bob.type;
-    start_second = Math.round(vm.track.duration * Math.random() * 0.3 + 0.1)
-    if (source_type == 'a') {
-      sourceIndex = vm.source.bob.trackKeys.indexOf(vm.track.bob.key);
+    source_type = source.type;
+    start_second = Math.round(track.duration * Math.random() * 0.3 + 0.1)
+    if (source_type == 'a' && source.trackKeys) {
+      sourceIndex = source.trackKeys.indexOf(track.key);
       console.log("Playing type '"+source_type+"' w/ index of '"+sourceIndex+"' @ "+start_second+" :: ",vm);
-      R.player.play({source: vm.source.bob.key, index: sourceIndex, initialPosition: start_second});
-    } else if (source_type == 'p') {
+      R.player.play({source: source.key, index: sourceIndex, initialPosition: start_second});
+    } else if (source_type == 'p' || source_type == 'a') {
       R.request({
         method: "get",
         content: {
-          keys: vm.source.bob.key,
+          keys: source.key,
           extras: '-*,trackKeys'
         },
         success: function(response) {
-          sourceIndex = response.result[vm.source.bob.key].trackKeys.indexOf(vm.track.bob.key);
+          sourceIndex = response.result[source.key].trackKeys.indexOf(track.key);
           console.log("Playing type '"+source_type+"' w/ index of '"+sourceIndex+"' @ "+start_second+" :: ",vm);
-          R.player.play({source: vm.source.bob.key, index: sourceIndex, initialPosition: start_second});
+          R.player.play({source: source.key, index: sourceIndex, initialPosition: start_second});
         },
         error: function(response) {
           console.log("error: " + response.message);
         }
       });
     } else {
-      console.log("Straight up playing '"+vm.track.bob.key+"' @ "+start_second);
-      R.player.play({ source: vm.track.bob.key, initialPosition: start_second});
+      console.log("Straight up playing '"+ track.key+"' @ "+start_second);
+      R.player.play({ source: track.key, initialPosition: start_second});
     }
   },
   handleHoverOver: function(vm, e){
@@ -397,9 +433,15 @@ var reb = {
     console.log("Following is initialized: ", R.currentUser.get('following').models);
     reb.vm = new FriendsVM();
     reb.people = R.currentUser.get('following').models;
+    R.player.on('change:playState', function(x) {
+      console.log("Playstate just changed to ",x);
+      reb.vm.playstate(x);
+    });
+    R.player.on('change:isMaster', function(x) {
+      console.log("isMaster just changed to ",x);
+      reb.vm.isMaster(x);
+    });
     _.each(reb.people, function(p, index){
-      if (index > 5 && index < reb.people.length-2) 
-        return;
       var tmpFunc = function TempVM() {
         this.playSingle = reb.handlePlaySingle,
         this.hoverOver = reb.handleHoverOver,
