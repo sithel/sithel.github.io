@@ -232,7 +232,7 @@ If you want to sync your listening, use <a target="_blank" href="http://eavesdro
     " class="user"></a>
     <i>(<span data-bind="text: key"></span> )</i> 
     -- 
-    <div data-bind="click: playSingle" class="play-button">&#9835;</div>
+    <div data-bind="click: playSingle, attr: { 'data-user': key }" data-is-current="true" class="play-button">&#9835;</div>
     "<a target="_blank" class="track" data-bind="
       attr: { href: track() ? track().url : 'bat' },
       event: { mouseover: hoverOver, mouseout: hoverOut }
@@ -262,7 +262,7 @@ If you want to sync your listening, use <a target="_blank" href="http://eavesdro
     ]
     --
     <span data-bind="text: track()
-      ? moment.duration(track().duration, 'seconds').minutes() + ':' + moment.duration(track().duration, 'seconds').seconds()
+      ? moment.duration(track().duration, 'seconds').minutes() + ':' + ((moment.duration(track().duration, 'seconds').seconds() < 10) ? '0' : '') + moment.duration(track().duration, 'seconds').seconds()
       : 'poo'"></span>
     --
     <span data-bind="text: stallTime, attr: { title: time }"></span>
@@ -283,7 +283,7 @@ If you want to sync your listening, use <a target="_blank" href="http://eavesdro
               'hide-history': !$parent.showAllHistory() && $index() >= 10
             }
           ">
-        <div data-bind="click: $parent.playSingle" class="play-button">&#9835;</div>
+        <div data-bind="click: $parent.playSingle, attr: { 'data-user': $parent.key }" data-is-current="false" class="play-button">&#9835;</div>
         <b><a target="_blank" class="track" data-bind="
           text: $data.track.name,
           event: { mouseover: $parent.hoverOver, mouseout: $parent.hoverOut },
@@ -334,6 +334,21 @@ function FriendsVM(){
   this.iconSmall = ko.observable(false);
   this.friends = ko.observableArray([]);
   this.activeDude = ko.observable();
+  this.playBehaviors = ko.observableArray(['not_anonymous', 'sample', 'jump_to_listening_point']);
+  this.endTrackBehavior = ko.observable('continue');
+  this.playingTrack = ko.observable(null);
+  this.playingSource = ko.observable(null);
+  this.syncedUser = ko.observable(null);
+  this.syncedHistoryIndex = ko.observable(null);
+  this.savedPlayPreferences = ko.computed(function() {
+    var val = { endTrack: this.endTrackBehavior(), play: this.playBehaviors() };
+    localStorage['stalker_play_pref'] = JSON.stringify(val)
+    if(this.endTrackBehavior() == 'continue' && this.playBehaviors().indexOf('not_anonymous') == -1) {
+      // this needs to go AFTER we set the value so that when we update it the GOOD value is written perminantly
+      _.defer(function() { $("[value='not_anonymous']").prop('checked', true); });
+    }
+    return val;
+  }, this);
   this.resetFriend = function() {
     this.activeDude(null);
   }
@@ -359,6 +374,7 @@ var reb = {
     R.authenticate({mode: 'redirect'});
   },
   TRACKING: true,
+  UPDATING: true,
   handleMoveToTop: function(key) {
     return function() {
       var index = _.reduce(reb.vm.friends(), function(memo, vm, index) {
@@ -386,48 +402,19 @@ var reb = {
     localStorage['stalker_friend_pref'] = JSON.stringify(order);
   },
   restoreSavedOrder: function() {
+    console.info("Trying to restore order to the list...");
     var pref = localStorage['stalker_friend_pref'];
     if (!pref)
       return;
     var order = JSON.parse(pref).reverse();
     _.each(order, function(key) {
-      reb.vmFriendLookup[key].moveToTop()
+      if (reb.vmFriendLookup[key]) {
+        reb.vmFriendLookup[key].moveToTop();
+      }
     });
   },
   tickThatTime: function() {
-    console.log(" ... tick ..")
     reb.vm.time(new Date());
-  },
-  handlePlaySingle: function(vm, e) {
-    var source = _.isFunction(vm.source) ? vm.source() : vm.source.bob
-    var track = _.isFunction(vm.track) ? vm.track() : vm.track.bob
-    console.log("Rebecca, I saw a play click for ", vm," w/ ", e);
-    source_type = source.type;
-    start_second = Math.round(track.duration * Math.random() * 0.3 + 0.1)
-    if (source_type == 'a' && source.trackKeys) {
-      sourceIndex = source.trackKeys.indexOf(track.key);
-      console.log("Playing type '"+source_type+"' w/ index of '"+sourceIndex+"' @ "+start_second+" :: ",vm);
-      R.player.play({source: source.key, index: sourceIndex, initialPosition: start_second});
-    } else if (source_type == 'p' || source_type == 'a') {
-      R.request({
-        method: "get",
-        content: {
-          keys: source.key,
-          extras: '-*,trackKeys'
-        },
-        success: function(response) {
-          sourceIndex = response.result[source.key].trackKeys.indexOf(track.key);
-          console.log("Playing type '"+source_type+"' w/ index of '"+sourceIndex+"' @ "+start_second+" :: ",vm);
-          R.player.play({source: source.key, index: sourceIndex, initialPosition: start_second});
-        },
-        error: function(response) {
-          console.log("error: " + response.message);
-        }
-      });
-    } else {
-      console.log("Straight up playing '"+ track.key+"' @ "+start_second);
-      R.player.play({ source: track.key, initialPosition: start_second});
-    }
   },
   handleHoverOver: function(vm, e){
     reb.vm.iconSmall(false);
@@ -449,10 +436,114 @@ var reb = {
   handleHoverOut: function(vm, e){
     reb.vm.icon(false);
   },
+  handlePlaySingle: function(vm, e, key) {
+    console.log("Rebecca, I saw a play click for\n vm: ", vm,"\n e: ", e, "\n key: ", key);
+
+    // Key is only set when we're manually calling this
+    // If it's called via a click, key is null & you have to find the key in the dom element
+    var source = _.isFunction(vm.source) ? vm.source() : vm.source.bob
+    var track = _.isFunction(vm.track) ? vm.track() : vm.track.bob
+
+    var user_key = (key) ? key : $(arguments[1].target).data('user');
+    reb.vm.syncedUser(user_key)
+
+    var sample = (key) ? false : reb.vm.playBehaviors().indexOf('sample') > -1;
+    var jump_to_listening_point = false;
+    start_second = 0;
+    if (e && reb.vm.playBehaviors().indexOf('jump_to_listening_point') > -1) {
+      if ($(e.target).data('is-current')) {
+        start_second = Math.round(moment.duration(new Date() - new Date(reb.vmFriendLookup[user_key].time())).asSeconds())
+        if (reb.vmFriendLookup[user_key].track().duration < start_second) {
+          start_second = 0;
+          console.log("Unable to jump to estimated listening time, track has expired");
+        } else {
+          console.log("Jumping to estimated listening time @ "+start_second+" seconds in");
+          jump_to_listening_point = true;
+        }
+      }
+    }
+    if (sample && !jump_to_listening_point) {
+      start_second = Math.round(track.duration * Math.random() * 0.3 + 0.1);
+      console.log("Jumping to random start point @ "+start_second+" seconds in");
+    }
+
+    var source_type = source.type;
+    var not_anonymous = reb.vm.playBehaviors().indexOf('not_anonymous') > -1;
+    if (not_anonymous && source_type == 'a' && source.trackKeys) {
+      sourceIndex = source.trackKeys.indexOf(track.key);
+      console.log("Playing type '"+source_type+"' w/ index of '"+sourceIndex+"' @ "+start_second+" :: ",vm);
+      reb.vm.playingSource(source.key);
+      reb.vm.playingTrack(track.key);
+      R.player.play({source: source.key, index: sourceIndex, initialPosition: start_second});
+    } else if (not_anonymous && (source_type == 'p' || source_type == 'a')) {
+      R.request({
+        method: "get",
+        content: {
+          keys: source.key,
+          extras: '-*,trackKeys'
+        },
+        success: function(response) {
+          sourceIndex = response.result[source.key].trackKeys.indexOf(track.key);
+          console.log("Playing type '"+source_type+"' w/ index of '"+sourceIndex+"' @ "+start_second+" :: ",vm);
+          reb.vm.playingSource(source.key);
+          reb.vm.playingTrack(track.key);
+          R.player.play({source: source.key, index: sourceIndex, initialPosition: start_second});
+        },
+        error: function(response) {
+          console.log("error: " + response.message);
+        }
+      });
+    } else {
+      console.log("Straight up playing '"+ track.key+"' @ "+start_second);
+      reb.vm.playingSource(track.key);
+      reb.vm.playingTrack(track.key);
+      R.player.play({ source: track.key, initialPosition: start_second});
+    }
+  },
   followReady: function() {
     console.log("Following is initialized: ", R.currentUser.get('following').models);
+    var playPref = localStorage['stalker_play_pref'];  // pretty sure this gets nuked when the VM is initialized
     reb.vm = new FriendsVM();
+    if (playPref) {
+      var pref = JSON.parse(playPref);
+      reb.vm.endTrackBehavior(pref.endTrack);
+      reb.vm.playBehaviors(pref.play);
+    }
     reb.people = R.currentUser.get('following').models;
+    R.player.on('change:playingSource', function(source) {
+      console.error(" REBECCA : we just heard from 'playingSource' with : ", source);
+    });
+    R.player.on('change:playingTrack', function(track) {
+      console.error(" REBECCA : we just heard from 'playingTrack' with : ", track);
+      if (!track) {
+        return;
+      }
+      if (reb.vm.endTrackBehavior() == 'stop' && track.get('key') != reb.vm.playingTrack()) {
+        R.player.pause();
+        console.log("Stopping play because end track behavior says STOP");
+      }
+      if (reb.vm.endTrackBehavior() == 'follow' && track.get('key') != reb.vmFriendLookup[reb.vm.syncedUser()].track().key) {
+        R.player.pause();
+        // TODO : implement replaying history if starting a while ago
+        console.log("Stopping play because there is no further user behavior to follow");
+      }
+    });
+    // sharks
+    R.player.on('change:position', function(position) {
+      if (position < 5) {
+        console.error(" REBECCA : we just heard from 'position' with : ", position);
+      } else if (R.player.playingTrack() && position > (R.player.playingTrack().get('duration') - 5) ) {
+        console.error(" REBECCA : we just heard from 'position' with : ", position);
+      }
+      // HITS 0 FIRST!!, then source Position, then track....
+
+    });
+    R.player.on('change:sourcePosition', function(x,y) {
+      console.error(" REBECCA : we just heard from 'sourcePosition' with : ", arguments);
+      // updates before track does
+    });
+
+
     R.player.on('change:playState', function(x) {
       console.log("Playstate just changed to ",x);
       reb.vm.playstate(x);
@@ -490,12 +581,15 @@ var reb = {
         this.p = p
       };
       var vm = new tmpFunc();
+      reb.vm.friends.push(vm);
+      reb.vmFriendLookup[vm.key()] = vm
+      if (!reb.UPDATING) {
+        return;
+      }
       p.on('change:lastSongPlayed', reb.buildRef(vm, reb.handleSongChange));
       p.on('change:lastSongPlayTime', reb.buildRef(vm, reb.handleSongTimeChange));
       p.on('change:lastSourcePlayed', reb.buildRef(vm, reb.handleSourceChange));
       p.on('change:online', reb.buildRef(vm, reb.handleOnlineChange));
-      reb.vm.friends.push(vm);
-      reb.vmFriendLookup[vm.key()] = vm
 
       p.trackField('lastSongPlayed');
       p.trackField('lastSongPlayTime');
@@ -543,6 +637,10 @@ var reb = {
     }
     vm.startTime(new Date())
     vm.track(reb.extractTrackData(track));
+    if (reb.vm.syncedUser() == vm.key()) {
+      // dogs
+      reb.handlePlaySingle(vm, null, vm.key())
+    }
   },
   handleOnlineChange: function(vm, online) {
     console.log("Arguments for 'handleOnlineChange' : ",arguments, " [[ ",vm.name(),"]]");
@@ -619,18 +717,44 @@ Source types:
   <div class="data-type source-tp">YouFM</div>
   <div class="data-type source-rr">Artist Station</div>
   <div class="data-type">Other</div>
-  <p>
+
+<br><br>
+
 Percentage of track completed:
   <div style="width: 50px;text-align: center;" class="play-percent v-low"> x &lt; 0.1 </div>
   <div style="width: 75px;text-align: center;" class="play-percent low"> 0.1 &le; x &lt; 0.45 </div>
   <div style="width: 75px;text-align: center;" class="play-percent medium"> 0.45 &le; x &lt; 0.75 </div>
   <div style="width: 75px;text-align: center;" class="play-percent ">0.75 &le; x &le; 0.95 </div>
   <div style="width: 50px;text-align: center;" class="play-percent max"> x &gt; 0.95 </div>
-  <p>
-Online Status:
+
+<br><br>
+
+Rdio Status:
   <div class='online-status-true'>Online</div>
   <div class='online-status-false'>Offline</div>
   <div class='online-status-undefined'>Unknown</div>
-<p>
-last updated: January 13th 2015
+
+<br><br>
+
+Hover to the left of the track name to reveal the play button <div class="play-button" style="opacity: 1">&#9835;</div>. Play behavior:<br>
+  <input type="checkbox" value="sample" data-bind="checked: playBehaviors" />Jump in the middle of clicked track<br>
+  <input type="checkbox" value="jump_to_listening_point" data-bind="checked: playBehaviors" />Jump to estimated listening point for clicked current tracks<br>
+  <input type="checkbox" value="not_anonymous" data-bind="checked: playBehaviors" />Play from source (album, playlist) if possible<br>
+  &nbsp;&nbsp;&nbsp;&nbsp;
+    <input type="radio" name="click_play" value="continue" data-bind="checked: endTrackBehavior" />After a song, continue through source if possible<br>
+
+  <input type="radio" name="click_play" value="stop" data-bind="checked: endTrackBehavior" />After a song, always stop<br>
+
+  <input type="radio" name="click_play" value="follow" data-bind="checked: endTrackBehavior" />After a song, follow user history (partially implemented)<br>
+  &nbsp;&nbsp;&nbsp;&nbsp;
+    <input type="checkbox" value="speak_transitions_follow" data-bind="checked: playBehaviors" />Speak details between tracks (NOT IMPLEMENTED)<br>
+
+  <input type="radio" name="click_play" value="hop" data-bind="checked: endTrackBehavior" />After a song, sync to most recent across friends (NOT IMPLEMENTED)<br>
+  &nbsp;&nbsp;&nbsp;&nbsp;
+    <input type="checkbox" value="speak_transitions_hop" data-bind="checked: playBehaviors" />Speak details between tracks (NOT IMPLEMENTED)<br>
+<br><br><br>
+
+OMG <a href="http://knockoutjs.com/" target="_blank">Knockout JS</a> is the best thing ever.  <a href="http://momentjs.com/" target="_blank">Moment.js</a> makes all the time stuff way easier.  Also, who could write a web page these days without <a href="http://underscorejs.org/" target="_blank">Underscore</a>?  Also, <a href="http://jquery.com/" target="_blank">jQuery</a>.
+<br><br><br>
+last updated: February 8th 2015
 </body>
