@@ -372,7 +372,27 @@ var reb = {
       }
       var vm = reb.vm.friends.splice(index, 1);
       reb.vm.friends.unshift(vm[0]);
+      reb.updateBubbleOrder(key);
     }
+  },
+  updateBubbleOrder: function(key) {
+    var pref = localStorage['stalker_friend_pref'];
+    var order = [];
+    if (pref) {
+      order = JSON.parse(pref);
+    }
+    order = _.without(order, key);
+    order.unshift(key);
+    localStorage['stalker_friend_pref'] = JSON.stringify(order);
+  },
+  restoreSavedOrder: function() {
+    var pref = localStorage['stalker_friend_pref'];
+    if (!pref)
+      return;
+    var order = JSON.parse(pref).reverse();
+    _.each(order, function(key) {
+      reb.vmFriendLookup[key].moveToTop()
+    });
   },
   tickThatTime: function() {
     console.log(" ... tick ..")
@@ -484,6 +504,7 @@ var reb = {
     });
     ko.applyBindings(reb.vm);
     setInterval(reb.tickThatTime, 1000*10);
+    reb.restoreSavedOrder();
   },
   buildRef: function(vm, callback) {
     return function() {
