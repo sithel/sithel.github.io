@@ -680,7 +680,7 @@ var reb = {
     }
     vm.startTime(new Date())
     vm.track(reb.extractTrackData(track));
-    if (reb.vm.syncedUser() == vm.key()) {
+    if (reb.vm.syncedUser() == vm.key() && reb.vm.endTrackBehavior() == 'follow') {
       // dogs
       reb.handlePlaySingle(vm, null, vm.key())
     }
