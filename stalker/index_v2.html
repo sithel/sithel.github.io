@@ -188,6 +188,18 @@
     border: 2px solid rgba(186, 101, 29, 0.5);
     background: rgb(186, 101, 29);
   }
+  .app-details {
+    background-image: url('stalkLikeStecker.png');
+    background-position: right top;
+    background-repeat: no-repeat;
+    padding-right: 250px;
+    background-size: 250px;
+    min-height: 520px;
+  }
+  .tiny-image {
+    width: 30px;
+    vertical-align: middle;
+  }
 </style>
 </head>
 <body>
@@ -201,20 +213,9 @@
 <div class="magic-hover" data-bind="visible: icon">
   <img data-bind="attr: {src: icon, width: iconSmall() ? '100px' : '200px'}">
 </div>
-<!--
-Yep, stuff is here.
 
-
-yo
-
-<select data-bind="options: friends, optionsText: 'name', value: activeDude"></select>
-<button data-bind="enable: activeDude, click: resetFriend">Clear</button>
-<p data-bind="with: activeDude">
-  You have chosen <b data-bind="text: name"></b>
-</p>
--->
-If you want to sync your listening, use <a target="_blank" href="http://eavesdrop.io">eavesdrop.io</a> for now (will add feature eventually)
 <p>
+<div data-bind="html: playingSummary"></div>
 <div data-bind="
   click: togglePlay,
   css: { 'is-master': isMaster, 'play-state-1': playstate() == 1, 'play-state-0': playstate() == 0},
@@ -334,6 +335,7 @@ function FriendsVM(){
   this.iconSmall = ko.observable(false);
   this.friends = ko.observableArray([]);
   this.activeDude = ko.observable();
+  this.playingSummary = ko.observable("not playing anything...");
   this.playBehaviors = ko.observableArray(['not_anonymous', 'sample', 'jump_to_listening_point']);
   this.endTrackBehavior = ko.observable('continue');
   this.playingTrack = ko.observable(null);
@@ -345,8 +347,9 @@ function FriendsVM(){
     localStorage['stalker_play_pref'] = JSON.stringify(val)
     if(this.endTrackBehavior() == 'continue' && this.playBehaviors().indexOf('not_anonymous') == -1) {
       // this needs to go AFTER we set the value so that when we update it the GOOD value is written perminantly
-      _.defer(function() { $("[value='not_anonymous']").prop('checked', true); });
+      _.defer(function() {$("[value='not_anonymous']").prop('checked', true); });
     }
+    _.delay(function() { reb.summarizeCurrentState(); }, 1000);
     return val;
   }, this);
   this.resetFriend = function() {
@@ -415,6 +418,42 @@ var reb = {
   },
   tickThatTime: function() {
     reb.vm.time(new Date());
+  },
+  summarizeCurrentState: function() {
+    var s = ""
+    if (!R.player.playingTrack()) {
+      s = "Not currently playing anything.  ";
+    } else {
+      var track = R.player.playingTrack();
+      s = "<img class='tiny-image' src='"+track.get('icon')+"'> Playing <b>'"+track.get('name')+"'</b> by <b>'"+track.get('artist')+"'</b> from <b>'"+track.get('album')+"'</b>.  ";
+      var source = R.player.playingSource();
+      if (source.get('type') == 'p') {
+        s += "From playlist <b>'"+source.get('name')+"'</b> <img class='tiny-image' src='"+source.get('icon')+"'> by <b>'"+ R.player.playingSource().get('owner').get('firstName') +"'</b>  ";
+      } else if (source.get('type') == 'a' || source.get('type') == 'al') {
+        s += "From album  ";
+      }
+      if (R.player.playingSource().get('tracks')) {
+        var index = _.map(R.player.playingSource().get('tracks').models, function(x) { return x.get('key') } ).indexOf(R.player.playingTrack().get('key')) + 1;
+        var length = R.player.playingSource().get('tracks').length
+        s += "("+index+" of "+length+")  "
+      }
+    }
+    if (reb.vm.endTrackBehavior() == 'follow') {
+      if (reb.vm.syncedUser()) {
+        s += "Following what <b>'"+reb.vmFriendLookup[reb.vm.syncedUser()].fullName()+"'</b> <img class='tiny-image' src='"+reb.vmFriendLookup[reb.vm.syncedUser()].icon()+"'> is playing.  ";
+      } else {
+        s += "Looking for someone to follow.  ";
+      }
+    } else if (reb.vm.endTrackBehavior() == 'stop' && R.player.playingTrack()) {
+      s += "Playback will stop after this track.  ";
+    } else if (reb.vm.endTrackBehavior() == 'continue' && R.player.playingTrack()) {
+      if (R.player.playingSource().get('tracks')) {
+        s += "Will advance to next track.  ";
+      } else {
+        s += "No further tracks in source to follow.  ";
+      }
+    }
+    reb.vm.playingSummary(s);
   },
   handleHoverOver: function(vm, e){
     reb.vm.iconSmall(false);
@@ -511,10 +550,11 @@ var reb = {
     }
     reb.people = R.currentUser.get('following').models;
     R.player.on('change:playingSource', function(source) {
-      console.error(" REBECCA : we just heard from 'playingSource' with : ", source);
+      // console.error(" REBECCA : we just heard from 'playingSource' with : ", source);
+      reb.summarizeCurrentState();
     });
     R.player.on('change:playingTrack', function(track) {
-      console.error(" REBECCA : we just heard from 'playingTrack' with : ", track);
+      // console.error(" REBECCA : we just heard from 'playingTrack' with : ", track);
       if (!track) {
         return;
       }
@@ -522,24 +562,25 @@ var reb = {
         R.player.pause();
         console.log("Stopping play because end track behavior says STOP");
       }
-      if (reb.vm.endTrackBehavior() == 'follow' && track.get('key') != reb.vmFriendLookup[reb.vm.syncedUser()].track().key) {
+      if (reb.vm.endTrackBehavior() == 'follow' && reb.vm.syncedUser() && track.get('key') != reb.vmFriendLookup[reb.vm.syncedUser()].track().key) {
         R.player.pause();
         // TODO : implement replaying history if starting a while ago
         console.log("Stopping play because there is no further user behavior to follow");
       }
+      reb.summarizeCurrentState();
     });
     // sharks
     R.player.on('change:position', function(position) {
       if (position < 5) {
-        console.error(" REBECCA : we just heard from 'position' with : ", position);
+        // console.error(" REBECCA : we just heard from 'position' with : ", position);
       } else if (R.player.playingTrack() && position > (R.player.playingTrack().get('duration') - 5) ) {
-        console.error(" REBECCA : we just heard from 'position' with : ", position);
+        // console.error(" REBECCA : we just heard from 'position' with : ", position);
       }
       // HITS 0 FIRST!!, then source Position, then track....
-
+      // reb.summarizeCurrentState();
     });
     R.player.on('change:sourcePosition', function(x,y) {
-      console.error(" REBECCA : we just heard from 'sourcePosition' with : ", arguments);
+      // console.error(" REBECCA : we just heard from 'sourcePosition' with : ", arguments);
       // updates before track does
     });
 
@@ -547,10 +588,12 @@ var reb = {
     R.player.on('change:playState', function(x) {
       console.log("Playstate just changed to ",x);
       reb.vm.playstate(x);
+      reb.summarizeCurrentState();
     });
     R.player.on('change:isMaster', function(x) {
       console.log("isMaster just changed to ",x);
       reb.vm.isMaster(x);
+      reb.summarizeCurrentState();
     });
     _.each(reb.people, function(p, index){
       var tmpFunc = function TempVM() {
@@ -709,52 +752,55 @@ R.ready(reb.start)
 <p>
 <br><br><br><br><br><br><br><br>
 
-Source types: 
-  <div class="data-type source-a">album</div>
-  <div class="data-type source-t">single track</div>
-  <div class="data-type source-p">playlist</div>
-  <div class="data-type source-ap">AutoPlay</div>
-  <div class="data-type source-tp">YouFM</div>
-  <div class="data-type source-rr">Artist Station</div>
-  <div class="data-type">Other</div>
+<div class="app-details">
+  Source types: 
+    <div class="data-type source-a">album</div>
+    <div class="data-type source-t">single track</div>
+    <div class="data-type source-p">playlist</div>
+    <div class="data-type source-ap">AutoPlay</div>
+    <div class="data-type source-tp">YouFM</div>
+    <div class="data-type source-rr">Artist Station</div>
+    <div class="data-type">Other</div>
 
-<br><br>
+  <br><br>
 
-Percentage of track completed:
-  <div style="width: 50px;text-align: center;" class="play-percent v-low"> x &lt; 0.1 </div>
-  <div style="width: 75px;text-align: center;" class="play-percent low"> 0.1 &le; x &lt; 0.45 </div>
-  <div style="width: 75px;text-align: center;" class="play-percent medium"> 0.45 &le; x &lt; 0.75 </div>
-  <div style="width: 75px;text-align: center;" class="play-percent ">0.75 &le; x &le; 0.95 </div>
-  <div style="width: 50px;text-align: center;" class="play-percent max"> x &gt; 0.95 </div>
+  Percentage of track completed:
+    <div style="width: 50px;text-align: center;" class="play-percent v-low"> x &lt; 0.1 </div>
+    <div style="width: 75px;text-align: center;" class="play-percent low"> 0.1 &le; x &lt; 0.45 </div>
+    <div style="width: 75px;text-align: center;" class="play-percent medium"> 0.45 &le; x &lt; 0.75 </div>
+    <div style="width: 75px;text-align: center;" class="play-percent ">0.75 &le; x &le; 0.95 </div>
+    <div style="width: 50px;text-align: center;" class="play-percent max"> x &gt; 0.95 </div>
 
-<br><br>
+  <br><br>
 
-Rdio Status:
-  <div class='online-status-true'>Online</div>
-  <div class='online-status-false'>Offline</div>
-  <div class='online-status-undefined'>Unknown</div>
+  Rdio Status:
+    <div class='online-status-true'>Online</div>
+    <div class='online-status-false'>Offline</div>
+    <div class='online-status-undefined'>Unknown</div>
 
-<br><br>
+  <br><br>
+  Hover to the left of the track name to reveal the play button <div class="play-button" style="opacity: 1">&#9835;</div>. Play behavior:<br>
+    <input type="checkbox" value="sample" data-bind="checked: playBehaviors" />Jump in the middle of clicked track<br>
+    <input type="checkbox" value="jump_to_listening_point" data-bind="checked: playBehaviors" />Jump to estimated listening point for clicked current tracks<br>
+    <input type="checkbox" value="not_anonymous" data-bind="checked: playBehaviors" />Play from source (album, playlist) if possible<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;
+      <input type="radio" name="click_play" value="continue" data-bind="checked: endTrackBehavior" />After a song, continue through source if possible<br>
 
-Hover to the left of the track name to reveal the play button <div class="play-button" style="opacity: 1">&#9835;</div>. Play behavior:<br>
-  <input type="checkbox" value="sample" data-bind="checked: playBehaviors" />Jump in the middle of clicked track<br>
-  <input type="checkbox" value="jump_to_listening_point" data-bind="checked: playBehaviors" />Jump to estimated listening point for clicked current tracks<br>
-  <input type="checkbox" value="not_anonymous" data-bind="checked: playBehaviors" />Play from source (album, playlist) if possible<br>
-  &nbsp;&nbsp;&nbsp;&nbsp;
-    <input type="radio" name="click_play" value="continue" data-bind="checked: endTrackBehavior" />After a song, continue through source if possible<br>
+    <input type="radio" name="click_play" value="stop" data-bind="checked: endTrackBehavior" />After a song, always stop<br>
 
-  <input type="radio" name="click_play" value="stop" data-bind="checked: endTrackBehavior" />After a song, always stop<br>
+    <input type="radio" name="click_play" value="follow" data-bind="checked: endTrackBehavior" />After a song, follow user history (partially implemented)<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;
+      <input type="checkbox" value="speak_transitions_follow" data-bind="checked: playBehaviors" />Speak details between tracks (NOT IMPLEMENTED)<br>
 
-  <input type="radio" name="click_play" value="follow" data-bind="checked: endTrackBehavior" />After a song, follow user history (partially implemented)<br>
-  &nbsp;&nbsp;&nbsp;&nbsp;
-    <input type="checkbox" value="speak_transitions_follow" data-bind="checked: playBehaviors" />Speak details between tracks (NOT IMPLEMENTED)<br>
-
-  <input type="radio" name="click_play" value="hop" data-bind="checked: endTrackBehavior" />After a song, sync to most recent across friends (NOT IMPLEMENTED)<br>
-  &nbsp;&nbsp;&nbsp;&nbsp;
-    <input type="checkbox" value="speak_transitions_hop" data-bind="checked: playBehaviors" />Speak details between tracks (NOT IMPLEMENTED)<br>
+    <input type="radio" name="click_play" value="hop" data-bind="checked: endTrackBehavior" />After a song, sync to most recent across friends (NOT IMPLEMENTED)<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;
+      <input type="checkbox" value="speak_transitions_hop" data-bind="checked: playBehaviors" />Speak details between tracks (NOT IMPLEMENTED)<br>
+</div>
 <br><br><br>
 
-OMG <a href="http://knockoutjs.com/" target="_blank">Knockout JS</a> is the best thing ever.  <a href="http://momentjs.com/" target="_blank">Moment.js</a> makes all the time stuff way easier.  Also, who could write a web page these days without <a href="http://underscorejs.org/" target="_blank">Underscore</a>?  Also, <a href="http://jquery.com/" target="_blank">jQuery</a>.
+OMG <a href="http://knockoutjs.com/" target="_blank">Knockout JS</a> is the best thing ever for dyanimc pages.  <a href="http://momentjs.com/" target="_blank">Moment.js</a> makes all the time stuff way easier.  Also, who could write a web page these days without <a href="http://underscorejs.org/" target="_blank">Underscore</a>?  Also, <a href="http://jquery.com/" target="_blank">jQuery</a>.
+<br><br>
+Shout out to <a target="_blank" href="http://eavesdrop.io">eavesdrop.io</a> for doing a great Rdio synced listening app first.  Used it for a long time but finally wrote my own when I needed more features.
 <br><br><br>
 last updated: February 8th 2015
 </body>
