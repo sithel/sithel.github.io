@@ -427,9 +427,9 @@ var reb = {
       var track = R.player.playingTrack();
       s = "<img class='tiny-image' src='"+track.get('icon')+"'> Playing <b>'"+track.get('name')+"'</b> by <b>'"+track.get('artist')+"'</b> from <b>'"+track.get('album')+"'</b>.  ";
       var source = R.player.playingSource();
-      if (source.get('type') == 'p') {
+      if (source && source.get('type') == 'p') {
         s += "From playlist <b>'"+source.get('name')+"'</b> <img class='tiny-image' src='"+source.get('icon')+"'> by <b>'"+ R.player.playingSource().get('owner').get('firstName') +"'</b>  ";
-      } else if (source.get('type') == 'a' || source.get('type') == 'al') {
+      } else if (source && (source.get('type') == 'a' || source.get('type') == 'al')) {
         s += "From album  ";
       }
       if (R.player.playingSource().get('tracks')) {
