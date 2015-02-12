@@ -432,9 +432,9 @@ var reb = {
       } else if (source && (source.get('type') == 'a' || source.get('type') == 'al')) {
         s += "From album  ";
       }
-      if (R.player.playingSource().get('tracks')) {
-        var index = _.map(R.player.playingSource().get('tracks').models, function(x) { return x.get('key') } ).indexOf(R.player.playingTrack().get('key')) + 1;
-        var length = R.player.playingSource().get('tracks').length
+      if (source && source.get('tracks')) {
+        var index = _.map(source.get('tracks').models, function(x) { return x.get('key') } ).indexOf(R.player.playingTrack().get('key')) + 1;
+        var length = source.get('tracks').length
         s += "("+index+" of "+length+")  "
       }
     }
@@ -447,7 +447,7 @@ var reb = {
     } else if (reb.vm.endTrackBehavior() == 'stop' && R.player.playingTrack()) {
       s += "Playback will stop after this track.  ";
     } else if (reb.vm.endTrackBehavior() == 'continue' && R.player.playingTrack()) {
-      if (R.player.playingSource().get('tracks')) {
+      if (R.player.playingSource() && R.player.playingSource().get('tracks')) {
         s += "Will advance to next track.  ";
       } else {
         s += "No further tracks in source to follow.  ";
