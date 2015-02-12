@@ -195,10 +195,17 @@
     padding-right: 250px;
     background-size: 250px;
     min-height: 520px;
+    padding-left: 25px;
   }
   .tiny-image {
     width: 30px;
     vertical-align: middle;
+  }
+  div.master-status {
+    display: block;
+    top: 75px;
+    font-size: 35px;
+    border: 0px;
   }
 </style>
 </head>
@@ -221,6 +228,12 @@
   css: { 'is-master': isMaster, 'play-state-1': playstate() == 1, 'play-state-0': playstate() == 0},
   text: (playstate() == 1) ? '&#9654;' : '&#9616;&#9616;'
   " class="play-status"></div>
+<div data-bind="
+  click: cycleMasterBehavior,
+  text: (masterBehavior() == 'aggressive') ? '&#8619;' : (masterBehavior() == 'never') ? '&#8622;' : '&#8621;',
+  attr: { title: (masterBehavior() == 'aggressive') ? 'Aggressive steal master' : (masterBehavior() == 'never') ? 'Never steal master' : 'Steal master on track transition' }
+  " class="play-status master-status"></div>
+
 <ul class="people-block" data-bind="foreach: friends">
   <li data-bind="css: { 
     'online-status-true': isOnline(),
@@ -329,6 +342,7 @@
 <script>
 function FriendsVM(){
   this.playstate = ko.observable(R.player.PLAYSTATE_STOPPED);
+  this.masterBehavior = ko.observable('normal');
   this.isMaster = ko.observable(false);
   this.time = ko.observable();
   this.icon = ko.observable(false);
@@ -358,6 +372,15 @@ function FriendsVM(){
   this.togglePlay = function(vm) {
     console.log("We just clicked toggle play ", vm);
     R.player.togglePause()
+  }
+  this.cycleMasterBehavior = function(vm) {
+    if (vm.masterBehavior() == 'normal') {
+      vm.masterBehavior('aggressive');
+    } else if (vm.masterBehavior() == 'aggressive') {
+      vm.masterBehavior('never');
+    } else {
+      vm.masterBehavior('normal');
+    }
   }
 }
 
@@ -594,6 +617,16 @@ var reb = {
       console.log("isMaster just changed to ",x);
       reb.vm.isMaster(x);
       reb.summarizeCurrentState();
+      if (reb.vm.masterBehavior() == 'aggressive') {
+        _.delay(function() {
+          R.player.startMasterTakeover();
+          console.info("I just kicked a Master Takeover step");
+          // TODO : be smarter about this play steal
+          R.player.play()
+        }, 500);
+      } else {
+        console.info("I just lost master, my behavior is "+reb.vm.masterBehavior());
+      }
     });
     _.each(reb.people, function(p, index){
       var tmpFunc = function TempVM() {
@@ -680,7 +713,7 @@ var reb = {
     }
     vm.startTime(new Date())
     vm.track(reb.extractTrackData(track));
-    if (reb.vm.syncedUser() == vm.key() && reb.vm.endTrackBehavior() == 'follow') {
+    if (reb.vm.syncedUser() == vm.key() && reb.vm.endTrackBehavior() == 'follow' && reb.vm.masterBehavior() != 'never') {
       // dogs
       reb.handlePlaySingle(vm, null, vm.key())
     }
@@ -777,6 +810,12 @@ R.ready(reb.start)
     <div class='online-status-true'>Online</div>
     <div class='online-status-false'>Offline</div>
     <div class='online-status-undefined'>Unknown</div>
+
+  <br><br>
+  Click the icon below the play button to cycle through Master behavior status:
+  <li>aggressively steal master  &#8619;
+  <li>never steal master &#8622;
+  <li>steal master on track transition &#8621;
 
   <br><br>
   Hover to the left of the track name to reveal the play button <div class="play-button" style="opacity: 1">&#9835;</div>. Play behavior:<br>
