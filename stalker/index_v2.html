@@ -154,6 +154,7 @@
     border-color: rgba(195, 50, 50, 0.54);
     position: fixed;
     left: 0px;
+    top: 90px;
     display: none;
   }
   .play-status.is-master {
@@ -203,9 +204,19 @@
   }
   div.master-status {
     display: block;
-    top: 75px;
+    top: 120px;
     font-size: 35px;
     border: 0px;
+  }
+  div.end-status {
+    display: block;
+    top: 170px;
+    font-size: 26px;
+    border: 0px;
+    left: 1px;
+  }
+  div.end-status.continue {
+    left: 7px;
   }
 </style>
 </head>
@@ -233,6 +244,18 @@
   text: (masterBehavior() == 'aggressive') ? '&#8619;' : (masterBehavior() == 'never') ? '&#8622;' : '&#8621;',
   attr: { title: (masterBehavior() == 'aggressive') ? 'Aggressive steal master' : (masterBehavior() == 'never') ? 'Never steal master' : 'Steal master on track transition' }
   " class="play-status master-status"></div>
+<div data-bind="
+  click: cycleEndBehavior,
+  text: (endTrackBehavior() == 'follow') ? '&#9786;' : (endTrackBehavior() == 'stop') ? '&#9737;' : '&darr;',
+  attr: {
+    title: (endTrackBehavior() == 'follow') ? 'Follow user listening' : (endTrackBehavior() == 'stop') ? 'Stop after track' : 'Continue through source'
+  },
+  css: {
+    'play-status': true,
+    'end-status': true,
+    'continue': endTrackBehavior() == 'continue'
+  }
+  "></div>
 
 <ul class="people-block" data-bind="foreach: friends">
   <li data-bind="css: { 
@@ -372,6 +395,16 @@ function FriendsVM(){
   this.togglePlay = function(vm) {
     console.log("We just clicked toggle play ", vm);
     R.player.togglePause()
+  }
+  this.cycleEndBehavior = function(vm) {
+    console.log("well fuck, do something.  Currently at ", vm.endTrackBehavior());
+    if (vm.endTrackBehavior() == 'stop') {
+      vm.endTrackBehavior('continue');
+    } else if (vm.endTrackBehavior() == 'continue') {
+      vm.endTrackBehavior('follow');
+    } else {
+      vm.endTrackBehavior('stop');
+    }
   }
   this.cycleMasterBehavior = function(vm) {
     if (vm.masterBehavior() == 'normal') {
@@ -840,6 +873,8 @@ R.ready(reb.start)
 OMG <a href="http://knockoutjs.com/" target="_blank">Knockout JS</a> is the best thing ever for dyanimc pages.  <a href="http://momentjs.com/" target="_blank">Moment.js</a> makes all the time stuff way easier.  Also, who could write a web page these days without <a href="http://underscorejs.org/" target="_blank">Underscore</a>?  Also, <a href="http://jquery.com/" target="_blank">jQuery</a>.
 <br><br>
 Shout out to <a target="_blank" href="http://eavesdrop.io">eavesdrop.io</a> for doing a great Rdio synced listening app first.  Used it for a long time but finally wrote my own when I needed more features.
+<br><br>
+If you notice some syncing between your friends, they're probably either using this app or over at an <a href="http://rdioparty.com/" target="_blank">Rdio Party</a> that you weren't invited to.
 <br><br><br>
-last updated: February 8th 2015
+last updated: March 10th 2015
 </body>
