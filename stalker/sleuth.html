@@ -73,7 +73,8 @@ var reb = {
         type: histRecord.source.type,
         key: histRecord.source.key,
         time: moment.duration(reb.now - new Date(histRecord.time)).asMilliseconds(),
-        tracks: []
+        tracks: [],
+        raw: histRecord
       };
       _.each(histRecord.tracks.items, function(histTrack, index) {
         record.tracks.push({
@@ -81,6 +82,7 @@ var reb = {
           key: histTrack.track.key,
           time: moment.duration(reb.now - new Date(histTrack.time)).asMilliseconds(),
           humanTime: moment.duration(new Date(histTrack.time) - reb.now).humanize(true),
+          raw: histTrack
         });
       });
       friendVm.history.push(record);
@@ -88,38 +90,83 @@ var reb = {
     reb.updateGraph(friendVm);
     console.log("Just chewed through some history, now we have : ", friendVm.history());
   },
+  colorScale: d3.scale.category10(),
   updateGraph: function(vm) {
     window.reb2 = vm.history();
     var times = _.reduce(vm.history(), function(memo,record){
       var times = _.map(record.tracks, function(t) { return t.time });
       return memo.concat(times);
     }, []);
-    var colorScale = d3.scale.category10()
     var timeScale = d3.scale.linear()
                     .domain([_.min(times), _.max(times)])
                     .range([10, 450]);
+    window.lastScale = timeScale;
     var data = [];
     _.each(vm.history(), function(record, index){
-      data.push({
-        name: record.name,
+      r = {
+        times: _.map(record.tracks, function(t) { return t.time }),
+        name: record.name + " ["+record.type+"]",
         type: record.type,
         time: record.time,
         index: index,
-        count: record.tracks.length
-      })
+        count: record.tracks.length,
+        tracks: []
+      }
+      _.each(record.tracks, function(track, i){
+        r.tracks.push({
+          name: track.name,
+          time: track.time
+        })
+      });
+      data.push(r);
     });
     var circle = reb.svg.selectAll("circle").data(data);
     circle.exit().remove();
     circle.enter().append("circle")
         .attr("r",function(d) { return d.count * 2; })
         .attr("stroke", "black")
-        .attr("fill",function(d) { return colorScale(d.type) })
+        .attr("fill",function(d) { return reb.colorScale(d.type) })
         .append('title')
           .text(function(d) { return d.name; })
         ;
     circle
         .attr("cy", function(d) { return timeScale(d.time); })
-        .attr("cx", function(d) { return d.index * 20; });
+        .attr("cx", function(d) { return 100 + d.index * 20; });
+
+
+    var rect = reb.svg.selectAll("svg>rect").data(data);
+    rect.exit().remove();
+    rect.enter().append("rect")
+        .attr("stroke", "none")
+        .style("opacity", "0.5")
+        .attr("fill",function(d) { return reb.colorScale(d.type) })
+        .append('title')
+          .text(function(d) { return d.name; })
+        ;
+    rect
+        .attr("height",function(d) { 
+          var h = timeScale(_.max(d.times)) - timeScale(d.time) + 5; 
+          console.log("\t> height: ", h," for ", d.name, " w/ ", d.time, " of ("+_.min(d.times)+"..."+_.max(d.times)+") from ", d.count);
+          return h;
+        })
+        .attr("y", function(d) { return timeScale(d.time); })
+        // these need to flex to make room for more rows
+        .attr("x", function(d) { return 10 })
+        .attr("width", function(d) { return 10 });
+    var tinyRect = rect.selectAll("rect").data(function(d) {
+        console.log(" help me rebecca, what is this? ", d);
+        return d.tracks;
+      });
+    tinyRect.exit().remove();
+    tinyRect.enter().append("rect")
+      .attr("width", "20")
+      .attr("height", "5")
+      .attr("fill", "green")
+      .attr("stroke", "black")
+      .append("title")
+        .text(function(d) { return d.name; })
+      ;
+
   },
   haulInAHistoryLoad: function(userKey, start) {
     console.log("Doing a pull for "+userKey+", starting at "+start);
