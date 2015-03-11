@@ -62,6 +62,9 @@ var reb = {
   },
   TRACKING: true,
   scrapeHistory: function(vm) {
+    // TODO : don't nuke these! we just need to shuffle things around...
+    reb.svg.selectAll('g').remove();
+    reb.svg.selectAll('circle').remove();
     console.log("Trying to get history for "+vm.key())
     reb.haulInAHistoryLoad(vm.key(), 0)
   },
@@ -115,7 +118,8 @@ var reb = {
       _.each(record.tracks, function(track, i){
         r.tracks.push({
           name: track.name,
-          time: track.time
+          time: track.time,
+          type: record.type
         })
       });
       data.push(r);
@@ -134,16 +138,29 @@ var reb = {
         .attr("cx", function(d) { return 100 + d.index * 20; });
 
 
-    var rect = reb.svg.selectAll("svg>rect").data(data);
-    rect.exit().remove();
-    rect.enter().append("rect")
+    var source = reb.svg.selectAll("g").data(data);
+    source.exit().remove();
+    var g = source.enter().append("g");
+
+    var tinyRect = source.selectAll("g").data(function(d) {
+        console.log(" help me rebecca, what is this? ", d);
+        return d.tracks;
+      });
+    tinyRect.exit().remove();
+    tinyRect.enter().append("rect")
+      .attr("width", "30")
+      .style("opacity", "0.5")
+      .attr("height", "2")
+      .attr("fill",function(d) { return reb.colorScale(d.type) })
+      .attr("y", function(d) { return timeScale(d.time); })
+      .append("title")
+        .text(function(d) { return d.name; })
+      ;
+
+    g.append("rect")
         .attr("stroke", "none")
-        .style("opacity", "0.5")
+        .style("opacity", "0.75")
         .attr("fill",function(d) { return reb.colorScale(d.type) })
-        .append('title')
-          .text(function(d) { return d.name; })
-        ;
-    rect
         .attr("height",function(d) { 
           var h = timeScale(_.max(d.times)) - timeScale(d.time) + 5; 
           console.log("\t> height: ", h," for ", d.name, " w/ ", d.time, " of ("+_.min(d.times)+"..."+_.max(d.times)+") from ", d.count);
@@ -152,20 +169,12 @@ var reb = {
         .attr("y", function(d) { return timeScale(d.time); })
         // these need to flex to make room for more rows
         .attr("x", function(d) { return 10 })
-        .attr("width", function(d) { return 10 });
-    var tinyRect = rect.selectAll("rect").data(function(d) {
-        console.log(" help me rebecca, what is this? ", d);
-        return d.tracks;
-      });
-    tinyRect.exit().remove();
-    tinyRect.enter().append("rect")
-      .attr("width", "20")
-      .attr("height", "5")
-      .attr("fill", "green")
-      .attr("stroke", "black")
-      .append("title")
-        .text(function(d) { return d.name; })
-      ;
+        .attr("width", function(d) { return 10 })
+        .append('title')
+          .text(function(d) { return d.name; })
+        ;
+
+
 
   },
   haulInAHistoryLoad: function(userKey, start) {
