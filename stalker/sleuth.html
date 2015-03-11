@@ -1,0 +1,233 @@
+<head>
+<title>Sleuth like Stecker</title>
+<script type="text/javascript" src="snap.svg-min.js"></script>
+<script type="text/javascript" src="underscore-min.js"></script>
+<script type="text/javascript" src="knockout-3.2.0.js"></script>
+<script type="text/javascript" src="d3.v3.min.js"></script>
+<script type="text/javascript" src="jquery-1.11.1.min.js"></script>
+<script type="text/javascript" src="moment-with-locales.min.js"></script>
+<script src="https://www.rdio.com/api/api.js?client_id=5LDYCAILB37SOCVk4qPh5A"></script>
+<style>
+  .graph {
+    float: right;
+    border: 1px solid black;
+  }
+  #showThings {
+    border: 1px solid red;
+    width: 500px;
+    height: 500px;
+  }
+</style>
+</head>
+<body>
+<div class="attribution">powered by <a target="_blank" href="http://www.rdio.com">Rdio.com</a></div>
+<div class="graph">
+  <svg id="showThings"></svg>
+</div>
+<div>
+<ul class="people-block" data-bind="foreach: friends">
+  <li><span data-bind="text: name, click: scrapeHistory"></span><span data-bind="click: moveToTop">^</span>
+  <ul data-bind="foreach: history">
+    <li><span data-bind="text: $data.name"></span>[<span data-bind="text: $data.type"></span>]
+    <ul data-bind="foreach: $data.tracks">
+      <li><span data-bind="text: $data.name"></span><sub data-bind="text: $data.humanTime"></sub>
+    </ul>
+  </ul>
+</ul>
+</div>
+<p>
+
+<script>
+function FriendsVM(){
+  this.friends = ko.observableArray([]);
+}
+
+var reb = {
+  vm: null,             // created in followReady
+  vmFriendLookup: {},   // look up users by id
+  MAX_HISTORY: 20,
+  now: new Date(),
+  svg: d3.select("#showThings"),
+  start: function(){
+    console.log("Stuff started : ", R.authenticated());
+    if (!R.authenticated()) {
+      $('.people-block').html("");
+      $("body").prepend("<div onclick='reb.auth()' class='auth-box'>Click to authenticate</div>")
+    } else if(reb.TRACKING) {
+      R.currentUser.trackFollowing(reb.followReady);
+    }
+  },
+  auth: function(){
+    R.authenticate({mode: 'redirect'});
+  },
+  TRACKING: true,
+  scrapeHistory: function(vm) {
+    console.log("Trying to get history for "+vm.key())
+    reb.haulInAHistoryLoad(vm.key(), 0)
+  },
+  processSources: function(userKey, sources) {
+    friendVm = reb.vmFriendLookup[userKey]
+    _.each(sources, function(histRecord, index) {
+      record = {
+        name: histRecord.source.name,
+        type: histRecord.source.type,
+        key: histRecord.source.key,
+        time: moment.duration(reb.now - new Date(histRecord.time)).asMilliseconds(),
+        tracks: []
+      };
+      _.each(histRecord.tracks.items, function(histTrack, index) {
+        record.tracks.push({
+          name: histTrack.track.name,
+          key: histTrack.track.key,
+          time: moment.duration(reb.now - new Date(histTrack.time)).asMilliseconds(),
+          humanTime: moment.duration(new Date(histTrack.time) - reb.now).humanize(true),
+        });
+      });
+      friendVm.history.push(record);
+    });
+    reb.updateGraph(friendVm);
+    console.log("Just chewed through some history, now we have : ", friendVm.history());
+  },
+  updateGraph: function(vm) {
+    window.reb2 = vm.history();
+    var times = _.reduce(vm.history(), function(memo,record){
+      var times = _.map(record.tracks, function(t) { return t.time });
+      return memo.concat(times);
+    }, []);
+    var colorScale = d3.scale.category10()
+    var timeScale = d3.scale.linear()
+                    .domain([_.min(times), _.max(times)])
+                    .range([10, 450]);
+    var data = [];
+    _.each(vm.history(), function(record, index){
+      data.push({
+        name: record.name,
+        type: record.type,
+        time: record.time,
+        index: index,
+        count: record.tracks.length
+      })
+    });
+    var circle = reb.svg.selectAll("circle").data(data);
+    circle.exit().remove();
+    circle.enter().append("circle")
+        .attr("r",function(d) { return d.count * 2; })
+        .attr("stroke", "black")
+        .attr("fill",function(d) { return colorScale(d.type) })
+        .append('title')
+          .text(function(d) { return d.name; })
+        ;
+    circle
+        .attr("cy", function(d) { return timeScale(d.time); })
+        .attr("cx", function(d) { return d.index * 20; });
+  },
+  haulInAHistoryLoad: function(userKey, start) {
+    console.log("Doing a pull for "+userKey+", starting at "+start);
+    R.request({
+      method: 'getHistoryForUser',
+      content: {
+        user: userKey,
+        start: start,
+        count: 10,
+        extras: ['-*', 'key'],
+        v: '20150310'
+      },
+      success: function(resp){
+        console.log("yo yo there", resp);
+        console.log("done yet?", resp.result.doneLoading);
+        reb.processSources(userKey, resp.result.sources);
+        if (resp.result.doneLoading) {
+          console.log("looks like we're all done!");
+          return;
+        }
+        var lastTx = resp.result.last_transaction
+        if (lastTx >= reb.MAX_HISTORY) {
+          console.log("Artificially clipping at "+reb.MAX_HISTORY+"!");
+          return;
+        }
+        _.delay(function() {
+          reb.haulInAHistoryLoad(userKey, lastTx);
+        }, 1000);
+      }
+    });
+  },
+  followReady: function() {
+    console.log("Following is initialized: ", R.currentUser.get('following').models);
+    var playPref = localStorage['sleuth_play_pref'];  // pretty sure this gets nuked when the VM is initialized
+    reb.vm = new FriendsVM();
+    reb.people = R.currentUser.get('following').models;
+    reb.people.unshift(R.currentUser);
+    _.each(reb.people, function(p, index){
+      var tmpFunc = function TempVM() {
+        this.name = ko.observable(p.get('firstName')),
+        this.icon = ko.observable(p.get('icon')),
+        this.url = ko.observable("http://www.rdio.com"+p.get('url')),
+        this.fullName = ko.observable(p.get('firstName') + " " + p.get('lastName')),
+        this.key = ko.observable(p.get('key')),
+        this.history = ko.observableArray([]),
+        this.moveToTop = reb.handleMoveToTop(p.get('key')),
+        this.scrapeHistory = reb.scrapeHistory,
+        this.p = p
+      };
+      var vm = new tmpFunc();
+      reb.vm.friends.push(vm);
+      reb.vmFriendLookup[vm.key()] = vm
+    });
+    ko.applyBindings(reb.vm);
+    console.log("Done with everything in followReady...")
+    reb.restoreSavedOrder();
+  },
+  restoreSavedOrder: function() {
+    console.info("Trying to restore order to the list...");
+    var pref = localStorage['sleuth_friend_pref'];
+    if (!pref)
+      return;
+    var order = JSON.parse(pref).reverse();
+    _.each(order, function(key) {
+      if (reb.vmFriendLookup[key]) {
+        reb.vmFriendLookup[key].moveToTop();
+      }
+    });
+  },
+  handleMoveToTop: function(key) {
+    return function() {
+      var index = _.reduce(reb.vm.friends(), function(memo, vm, index) {
+        if (vm.key() == key)
+          return index;
+        return memo;
+      }, -1);
+      if (index == -1) {
+        console.error("well fuck, I couldn't find the index for key ",key);
+        return;
+      }
+      var vm = reb.vm.friends.splice(index, 1);
+      reb.vm.friends.unshift(vm[0]);
+      reb.updateBubbleOrder(key);
+    }
+  },
+  updateBubbleOrder: function(key) {
+    var pref = localStorage['sleuth_friend_pref'];
+    var order = [];
+    if (pref) {
+      order = JSON.parse(pref);
+    }
+    order = _.without(order, key);
+    order.unshift(key);
+    localStorage['sleuth_friend_pref'] = JSON.stringify(order);
+  },
+  people: null,
+
+  FAKE_END: false
+}
+R.ready(reb.start)
+</script>
+
+
+OMG <a href="http://knockoutjs.com/" target="_blank">Knockout JS</a> is the best thing ever for dyanimc pages.  <a href="http://momentjs.com/" target="_blank">Moment.js</a> makes all the time stuff way easier.  Also, who could write a web page these days without <a href="http://underscorejs.org/" target="_blank">Underscore</a>?  Also, <a href="http://jquery.com/" target="_blank">jQuery</a>.
+<br><br>
+Shout out to <a target="_blank" href="http://eavesdrop.io">eavesdrop.io</a> for doing a great Rdio synced listening app first.  Used it for a long time but finally wrote my own when I needed more features.
+<br><br>
+If you notice some syncing between your friends, they're probably either using this app or over at an <a href="http://rdioparty.com/" target="_blank">Rdio Party</a> that you weren't invited to.
+<br><br><br>
+last updated: March 10th 2015
+</body>
