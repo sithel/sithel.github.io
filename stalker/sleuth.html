@@ -14,8 +14,28 @@
   }
   #showThings {
     border: 1px solid red;
-    width: 500px;
-    height: 500px;
+    width: 75%;
+    height: 99%;
+    position: absolute;
+    right: 0;
+    top: 0;
+  }
+  .friend-list {
+    overflow: scroll;
+    height: 100%;
+  }
+  ul {
+    margin-left: -30px;
+    list-style-position: inside;
+  }
+  .people-block {
+
+  }
+  .source-block {
+    font-size: 0.7em;
+  }
+  .track-block {
+    color: rgb(14, 30, 144);
   }
 </style>
 </head>
@@ -24,30 +44,33 @@
 <div class="graph">
   <svg id="showThings"></svg>
 </div>
-<div>
-<ul class="people-block" data-bind="foreach: friends">
-  <li><span data-bind="text: name, click: scrapeHistory"></span><span data-bind="click: moveToTop">^</span>
-  <ul data-bind="foreach: history">
-    <li><span data-bind="text: $data.name"></span>[<span data-bind="text: $data.type"></span>]
-    <ul data-bind="foreach: $data.tracks">
-      <li><span data-bind="text: $data.name"></span><sub data-bind="text: $data.humanTime"></sub>
+<div class="friend-list">
+  <input type="text" data-bind="value: maxLoad">
+  <ul class="people-block" data-bind="foreach: friends">
+    <li><span data-bind="text: name, click: scrapeHistory"></span><span data-bind="click: moveToTop">^</span>
+    <ul class="source-block" data-bind="foreach: history">
+      <li><span data-bind="text: $data.name"></span>[<span data-bind="text: $data.type"></span>]
+      <ul class="track-block" data-bind="foreach: $data.tracks">
+        <li><span data-bind="text: $data.name"></span><sub data-bind="text: $data.humanTime"></sub>
+      </ul>
     </ul>
   </ul>
-</ul>
 </div>
 <p>
 
 <script>
 function FriendsVM(){
   this.friends = ko.observableArray([]);
+  this.maxLoad = ko.observable(20);
 }
 
 var reb = {
   vm: null,             // created in followReady
   vmFriendLookup: {},   // look up users by id
-  MAX_HISTORY: 20,
   now: new Date(),
   svg: d3.select("#showThings"),
+  colorScale: d3.scale.category10(),
+  TRACKING: true,
   start: function(){
     console.log("Stuff started : ", R.authenticated());
     if (!R.authenticated()) {
@@ -60,7 +83,6 @@ var reb = {
   auth: function(){
     R.authenticate({mode: 'redirect'});
   },
-  TRACKING: true,
   scrapeHistory: function(vm) {
     // TODO : don't nuke these! we just need to shuffle things around...
     reb.svg.selectAll('g').remove();
@@ -93,17 +115,79 @@ var reb = {
     reb.updateGraph(friendVm);
     console.log("Just chewed through some history, now we have : ", friendVm.history());
   },
-  colorScale: d3.scale.category10(),
-  updateGraph: function(vm) {
-    window.reb2 = vm.history();
+  buildTimeScale: function(vm) {
     var times = _.reduce(vm.history(), function(memo,record){
       var times = _.map(record.tracks, function(t) { return t.time });
       return memo.concat(times);
     }, []);
+    var height = $('#showThings').height();
     var timeScale = d3.scale.linear()
                     .domain([_.min(times), _.max(times)])
-                    .range([10, 450]);
+                    .range([10, height - 20]);
     window.lastScale = timeScale;
+    return timeScale;
+  },
+  drawCircles: function(data, timeScale) {
+    var widthScale = d3.scale.linear()
+                    .domain([0, data.length])
+                    .range([40, $('#showThings').width()]);
+    var circle = reb.svg.selectAll("circle").data(data);
+    circle.exit().remove();
+    circle.enter().append("circle")
+        .attr("r",function(d) { return d.count * 2; })
+        .attr("stroke", "black")
+        .attr("fill",function(d) { return reb.colorScale(d.type) })
+        .append('title')
+          .text(function(d) { return d.name + ((d.count > 1) ? " " + d.count : "") ; })
+    ;
+    circle
+        .attr("cy", function(d) { return timeScale(d.time); })
+        .attr("cx", function(d) { return widthScale(d.index); })
+    ;
+  },
+  drawTrackTicks: function(tracks, timeScale) {
+    tracks.exit().remove();
+    tracks.enter().append("rect")
+      .attr("width", "10")
+      .style("opacity", "0.5")
+      .attr("height", "2")
+      .attr("fill",function(d) { return reb.colorScale(d.type) })
+      .append("title")
+        .text(function(d) {
+          console.log("\t\t ~ appending "+d.name);
+          return d.name;
+        })
+    ;
+    tracks
+      .attr("x", function(d, i) { 
+        console.log("\t\t- putting "+i+" somewhere... : "+d.name)
+        return (i % 2) * 20; 
+      })
+      .attr("y", function(d) { return timeScale(d.time); })
+    ;
+  },
+  drawSourceLines: function(source, timeScale) {
+    source.append("rect")
+      .attr("stroke", "none")
+      .attr("fill",function(d) { 
+        return d3.rgb(reb.colorScale(d.type)).darker().toString();
+      })
+      .attr("height",function(d) { 
+        var h = timeScale(_.max(d.times)) - timeScale(d.time) + 5; 
+        console.log("\t> height: ", h," for ", d.name, " w/ ", d.time, " of ("+_.min(d.times)+"..."+_.max(d.times)+") from ", d.count);
+        return h;
+      })
+      .attr("y", function(d) { return timeScale(d.time); })
+      // these need to flex to make room for more rows
+      .attr("x", function(d) { return 10 })
+      .attr("width", function(d) { return 10 })
+      .append('title')
+        .text(function(d) { return d.name + ((d.count > 1) ? d.count : "") ; })
+    ;
+  },
+  updateGraph: function(vm) {
+    window.reb2 = vm.history();
+    var timeScale = reb.buildTimeScale(vm);
     var data = [];
     _.each(vm.history(), function(record, index){
       r = {
@@ -124,58 +208,20 @@ var reb = {
       });
       data.push(r);
     });
-    var circle = reb.svg.selectAll("circle").data(data);
-    circle.exit().remove();
-    circle.enter().append("circle")
-        .attr("r",function(d) { return d.count * 2; })
-        .attr("stroke", "black")
-        .attr("fill",function(d) { return reb.colorScale(d.type) })
-        .append('title')
-          .text(function(d) { return d.name; })
-        ;
-    circle
-        .attr("cy", function(d) { return timeScale(d.time); })
-        .attr("cx", function(d) { return 100 + d.index * 20; });
 
+    reb.drawCircles(data, timeScale);
 
     var source = reb.svg.selectAll("g").data(data);
     source.exit().remove();
     var g = source.enter().append("g");
 
-    var tinyRect = source.selectAll("g").data(function(d) {
-        console.log(" help me rebecca, what is this? ", d);
+    var tracks = source.selectAll("g").data(function(d,i) {
+        console.log(" help me rebecca, what is this? ", i, " - ",d);
         return d.tracks;
       });
-    tinyRect.exit().remove();
-    tinyRect.enter().append("rect")
-      .attr("width", "30")
-      .style("opacity", "0.5")
-      .attr("height", "2")
-      .attr("fill",function(d) { return reb.colorScale(d.type) })
-      .attr("y", function(d) { return timeScale(d.time); })
-      .append("title")
-        .text(function(d) { return d.name; })
-      ;
+    reb.drawTrackTicks(tracks, timeScale);
 
-    g.append("rect")
-        .attr("stroke", "none")
-        .style("opacity", "0.75")
-        .attr("fill",function(d) { return reb.colorScale(d.type) })
-        .attr("height",function(d) { 
-          var h = timeScale(_.max(d.times)) - timeScale(d.time) + 5; 
-          console.log("\t> height: ", h," for ", d.name, " w/ ", d.time, " of ("+_.min(d.times)+"..."+_.max(d.times)+") from ", d.count);
-          return h;
-        })
-        .attr("y", function(d) { return timeScale(d.time); })
-        // these need to flex to make room for more rows
-        .attr("x", function(d) { return 10 })
-        .attr("width", function(d) { return 10 })
-        .append('title')
-          .text(function(d) { return d.name; })
-        ;
-
-
-
+    reb.drawSourceLines(source, timeScale);
   },
   haulInAHistoryLoad: function(userKey, start) {
     console.log("Doing a pull for "+userKey+", starting at "+start);
@@ -197,7 +243,7 @@ var reb = {
           return;
         }
         var lastTx = resp.result.last_transaction
-        if (lastTx >= reb.MAX_HISTORY) {
+        if (lastTx >= reb.vm.maxLoad()) {
           console.log("Artificially clipping at "+reb.MAX_HISTORY+"!");
           return;
         }
