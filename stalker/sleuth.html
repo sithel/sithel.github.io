@@ -21,7 +21,9 @@
     top: 0;
   }
   .friend-list {
-    overflow: scroll;
+    overflow-y: scroll;
+    overflow-x: hidden;
+    width: 25%;
     height: 100%;
   }
   ul {
@@ -34,8 +36,20 @@
   .source-block {
     font-size: 0.7em;
   }
+  .hide {
+    display: inline-block;
+  }
   .track-block {
     color: rgb(14, 30, 144);
+  }
+  .time {
+    font-size: 10px;
+  }
+  .color-key {
+    min-width: 60px;
+    text-align: center;
+    display: inline-block;
+    border: 1px solid black;
   }
 </style>
 </head>
@@ -44,17 +58,47 @@
 <div class="graph">
   <svg id="showThings"></svg>
 </div>
+<div class="time">
+
+</div>
 <div class="friend-list">
   <input type="text" data-bind="value: maxLoad">
   <ul class="people-block" data-bind="foreach: friends">
-    <li><span data-bind="text: name, click: scrapeHistory"></span><span data-bind="click: moveToTop">^</span>
+    <li>
+      <span data-bind="text: name, click: scrapeHistory"></span>
+      <span data-bind="click: moveToTop">^</span>
+      <span data-bind="
+        visible: history().length > 2,
+        click: function(d, e) { fullHistory(!fullHistory()); },
+        text: (fullHistory()) ? 'Hide' : 'Show All'
+      "></span>
+    </li>
     <ul class="source-block" data-bind="foreach: history">
-      <li><span data-bind="text: $data.name"></span>[<span data-bind="text: $data.type"></span>]
-      <ul class="track-block" data-bind="foreach: $data.tracks">
+      <li data-bind="visible: ($parent.fullHistory() || $index() == 0 || ($index() + 1) == $parent.history().length)">
+        <span data-bind="text: $data.name"></span>[<span data-bind="text: $data.type"></span>]
+        <sub data-bind="text: $data.humanTime, visible: !$parent.fullHistory()"></sub>
+      </li>
+      <ul class="track-block" data-bind="foreach: $data.tracks, visible: $parent.fullHistory()">
         <li><span data-bind="text: $data.name"></span><sub data-bind="text: $data.humanTime"></sub>
       </ul>
+      
     </ul>
+    
   </ul>
+</div>
+<div>
+<b>Key</b>
+<br>
+  <div data-bind="style: {'background-color': reb.colorScale('a')}" class="color-key">  [a] album</div>
+  <div data-bind="style: {'background-color': reb.colorScale('al')}" class="color-key"> [al] album favorites</div>
+  <div data-bind="style: {'background-color': reb.colorScale('t')}" class="color-key">  [t] track</div>
+  <div data-bind="style: {'background-color': reb.colorScale('sr')}" class="color-key"> [sr] track station</div>
+  <div data-bind="style: {'background-color': reb.colorScale('p')}" class="color-key">  [p] playlist</div>
+  <div data-bind="style: {'background-color': reb.colorScale('pr')}" class="color-key"> [pr] playlist radio</div>
+  <div data-bind="style: {'background-color': reb.colorScale('tp')}" class="color-key"> [tp] You FM</div>
+  <div data-bind="style: {'background-color': reb.colorScale('ap')}" class="color-key"> [ap] Auto Play</div>
+  <div data-bind="style: {'background-color': reb.colorScale('rr')}" class="color-key"> [rr] Artist Radio</div>
+  <div data-bind="style: {'background-color': reb.colorScale('gr')}" class="color-key"> [gr] Genre Radio</div>
 </div>
 <p>
 
@@ -62,6 +106,8 @@
 function FriendsVM(){
   this.friends = ko.observableArray([]);
   this.maxLoad = ko.observable(20);
+  this.minTime = ko.observable(null);
+  this.maxTime = ko.observable(null);
 }
 
 var reb = {
@@ -69,7 +115,8 @@ var reb = {
   vmFriendLookup: {},   // look up users by id
   now: new Date(),
   svg: d3.select("#showThings"),
-  colorScale: d3.scale.category10(),
+                                          // blue    orange    green    red       purple
+  colorScale: d3.scale.category20().domain(['a','al','t','tr','p','pr','tp','ap','rr','gr']),
   TRACKING: true,
   start: function(){
     console.log("Stuff started : ", R.authenticated());
@@ -87,7 +134,9 @@ var reb = {
     // TODO : don't nuke these! we just need to shuffle things around...
     reb.svg.selectAll('g').remove();
     reb.svg.selectAll('circle').remove();
+    reb.svg.selectAll('image').remove();
     console.log("Trying to get history for "+vm.key())
+    vm.history.removeAll();
     reb.haulInAHistoryLoad(vm.key(), 0)
   },
   processSources: function(userKey, sources) {
@@ -98,6 +147,7 @@ var reb = {
         type: histRecord.source.type,
         key: histRecord.source.key,
         time: moment.duration(reb.now - new Date(histRecord.time)).asMilliseconds(),
+        humanTime: moment.duration(new Date(histRecord.time) - reb.now).humanize(true),
         tracks: [],
         raw: histRecord
       };
@@ -120,11 +170,24 @@ var reb = {
       var times = _.map(record.tracks, function(t) { return t.time });
       return memo.concat(times);
     }, []);
+    reb.svg.selectAll(".time").remove()
+    reb.svg.append("text")
+      .attr("class","time")
+      .attr("x", "5")
+      .attr("y", "8")
+      .text(moment.duration(_.min(times)*-1).humanize(true))
     var height = $('#showThings').height();
+    var TOP_GAP = 35;
+    var BOTTOM_GAP = 20;
     var timeScale = d3.scale.linear()
                     .domain([_.min(times), _.max(times)])
-                    .range([10, height - 20]);
+                    .range([TOP_GAP, height - BOTTOM_GAP]);
     window.lastScale = timeScale;
+    reb.svg.append("text")
+      .attr("class","time")
+      .attr("x", 5)
+      .attr("y", height - 5)
+      .text(moment.duration(_.max(times)*-1).humanize(true))
     return timeScale;
   },
   drawCircles: function(data, timeScale) {
@@ -141,26 +204,30 @@ var reb = {
           .text(function(d) { return d.name + ((d.count > 1) ? " " + d.count : "") ; })
     ;
     circle
-        .attr("cy", function(d) { return timeScale(d.time); })
         .attr("cx", function(d) { return widthScale(d.index); })
+        .attr("cy", function(d) { 
+          var range = _.max(d.times) - _.min(d.times);
+          var val = _.min(d.times) + range/2;
+          console.log("Gotta pick something, going with "+ val+ " from "+range+" ("+_.min(d.times)+" - "+_.max(d.times)+")");
+          return timeScale(val);
+        })
     ;
   },
   drawTrackTicks: function(tracks, timeScale) {
-    tracks.exit().remove();
+    tracks.selectAll("rect.tick").remove()
     tracks.enter().append("rect")
       .attr("width", "10")
+      .attr("class", "tick")
       .style("opacity", "0.5")
       .attr("height", "2")
       .attr("fill",function(d) { return reb.colorScale(d.type) })
       .append("title")
         .text(function(d) {
-          console.log("\t\t ~ appending "+d.name);
           return d.name;
         })
     ;
     tracks
       .attr("x", function(d, i) { 
-        console.log("\t\t- putting "+i+" somewhere... : "+d.name)
         return (i % 2) * 20; 
       })
       .attr("y", function(d) { return timeScale(d.time); })
@@ -169,21 +236,21 @@ var reb = {
   drawSourceLines: function(source, timeScale) {
     source.append("rect")
       .attr("stroke", "none")
-      .attr("fill",function(d) { 
-        return d3.rgb(reb.colorScale(d.type)).darker().toString();
-      })
+      .attr("class", "bar")
+      .attr("x", 10)
+      .attr("width", 10)
+      .attr("y", function(d) { return timeScale(d.time); })
       .attr("height",function(d) { 
         var h = timeScale(_.max(d.times)) - timeScale(d.time) + 5; 
-        console.log("\t> height: ", h," for ", d.name, " w/ ", d.time, " of ("+_.min(d.times)+"..."+_.max(d.times)+") from ", d.count);
         return h;
       })
-      .attr("y", function(d) { return timeScale(d.time); })
-      // these need to flex to make room for more rows
-      .attr("x", function(d) { return 10 })
-      .attr("width", function(d) { return 10 })
+      .attr("width", 10)
+      .attr("fill",function(d,i) {
+        console.log("Painting "+i+" for "+d.name)
+        return d3.rgb(reb.colorScale(d.type)).darker().toString();
+      })
       .append('title')
-        .text(function(d) { return d.name + ((d.count > 1) ? d.count : "") ; })
-    ;
+        .text(function(d, i) { return i + " : "+ d.name + ((d.count > 1) ? d.count : "") ; })
   },
   updateGraph: function(vm) {
     window.reb2 = vm.history();
@@ -211,16 +278,30 @@ var reb = {
 
     reb.drawCircles(data, timeScale);
 
+    reb.svg.append("svg:image")
+      .attr("xlink:href", vm.icon())
+      .attr("x", 5)
+      .attr("y", 10)
+      .attr("width", 20)
+      .attr("height", 20)
     var source = reb.svg.selectAll("g").data(data);
     source.exit().remove();
-    var g = source.enter().append("g");
+    console.log("I'm at source : "+source[0].length)
+    source.enter().append("g");
+    source.attr("transform", function(d) {
+      var y = 0;
+      var x = 0;
+      return "translate(" + x + "," + y + ")";
+    });
+    console.log("\t NOW I'm at source : "+source[0].length)
 
     var tracks = source.selectAll("g").data(function(d,i) {
         console.log(" help me rebecca, what is this? ", i, " - ",d);
         return d.tracks;
       });
+    // removing all the rect is bullshit, I need to do a better job here!
+    source.selectAll("rect").remove()
     reb.drawTrackTicks(tracks, timeScale);
-
     reb.drawSourceLines(source, timeScale);
   },
   haulInAHistoryLoad: function(userKey, start) {
@@ -269,6 +350,7 @@ var reb = {
         this.history = ko.observableArray([]),
         this.moveToTop = reb.handleMoveToTop(p.get('key')),
         this.scrapeHistory = reb.scrapeHistory,
+        this.fullHistory = ko.observable(false),
         this.p = p
       };
       var vm = new tmpFunc();
