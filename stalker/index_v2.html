@@ -241,8 +241,8 @@
   " class="play-status"></div>
 <div data-bind="
   click: cycleMasterBehavior,
-  text: (masterBehavior() == 'aggressive') ? '&#8619;' : (masterBehavior() == 'never') ? '&#8622;' : '&#8621;',
-  attr: { title: (masterBehavior() == 'aggressive') ? 'Aggressive steal master' : (masterBehavior() == 'never') ? 'Never steal master' : 'Steal master on track transition' }
+  text: (masterBehavior() == 'aggressive') ? '&#8619;' : (masterBehavior() == 'never') ? '&#8622;' : (masterBehavior() == 'source') ? '&#8606;' : '&#8621;',
+  attr: { title: (masterBehavior() == 'aggressive') ? 'Aggressive steal master' : (masterBehavior() == 'never') ? 'Never steal master' : (masterBehavior() == 'source') ? 'Steal master on source transition' : 'Steal master on track transition' }
   " class="play-status master-status"></div>
 <div data-bind="
   click: cycleEndBehavior,
@@ -303,7 +303,7 @@
       : 'poo'"></span>
     --
     <span data-bind="text: stallTime, attr: { title: time }"></span>
-    <button data-bind="click: moveToTop">^</button>
+    <button data-bind="click: moveToTop, visible: $parent.sortOrder() == 'manual'">^</button>
     <div data-bind="
       text: showAllHistory() ? 'reduce history' : 'full history ('+history().length+')',
       click: toggleShowAllHistory,
@@ -363,7 +363,7 @@
 </ul>
 
 <script>
-function FriendsVM(){
+function FriendsVM(pref){
   this.playstate = ko.observable(R.player.PLAYSTATE_STOPPED);
   this.masterBehavior = ko.observable('normal');
   this.isMaster = ko.observable(false);
@@ -373,14 +373,27 @@ function FriendsVM(){
   this.friends = ko.observableArray([]);
   this.activeDude = ko.observable();
   this.playingSummary = ko.observable("not playing anything...");
-  this.playBehaviors = ko.observableArray(['not_anonymous', 'sample', 'jump_to_listening_point']);
-  this.endTrackBehavior = ko.observable('continue');
+  this.playBehaviors = ko.observableArray(pref.play || ['not_anonymous', 'sample', 'jump_to_listening_point']);
+  this.endTrackBehavior = ko.observable(pref.endTrack || 'continue');
   this.playingTrack = ko.observable(null);
   this.playingSource = ko.observable(null);
   this.syncedUser = ko.observable(null);
   this.syncedHistoryIndex = ko.observable(null);
+  this.sortOrder = ko.observable(pref.order || 'manual');
   this.savedPlayPreferences = ko.computed(function() {
-    var val = { endTrack: this.endTrackBehavior(), play: this.playBehaviors() };
+    var val = { endTrack: this.endTrackBehavior(), play: this.playBehaviors(), order: this.sortOrder() };
+
+    var oldPref = localStorage['stalker_play_pref'];
+    if (oldPref) {
+      var oldPref = JSON.parse(oldPref);
+      if (oldPref.order != val.order && val.order == 'manual') {
+        reb.restoreSavedOrder();
+      } else if (oldPref.order != val.order) {
+        console.error("REBECCA! It is HERE that I would re-sort people's times -- is it done yet?")
+        // TODO : debounce and then resort based on the stupid times we've got
+      }
+    }
+
     localStorage['stalker_play_pref'] = JSON.stringify(val)
     if(this.endTrackBehavior() == 'continue' && this.playBehaviors().indexOf('not_anonymous') == -1) {
       // this needs to go AFTER we set the value so that when we update it the GOOD value is written perminantly
@@ -411,6 +424,8 @@ function FriendsVM(){
       vm.masterBehavior('aggressive');
     } else if (vm.masterBehavior() == 'aggressive') {
       vm.masterBehavior('never');
+    } else if (vm.masterBehavior() == 'never') {
+      vm.masterBehavior('source');
     } else {
       vm.masterBehavior('normal');
     }
@@ -447,7 +462,9 @@ var reb = {
       }
       var vm = reb.vm.friends.splice(index, 1);
       reb.vm.friends.unshift(vm[0]);
-      reb.updateBubbleOrder(key);
+      if (reb.vm.sortOrder() == 'manual') {
+        reb.updateBubbleOrder(key);
+      }
     }
   },
   updateBubbleOrder: function(key) {
@@ -598,12 +615,8 @@ var reb = {
   followReady: function() {
     console.log("Following is initialized: ", R.currentUser.get('following').models);
     var playPref = localStorage['stalker_play_pref'];  // pretty sure this gets nuked when the VM is initialized
-    reb.vm = new FriendsVM();
-    if (playPref) {
-      var pref = JSON.parse(playPref);
-      reb.vm.endTrackBehavior(pref.endTrack);
-      reb.vm.playBehaviors(pref.play);
-    }
+    var pref = (playPref) ? JSON.parse(playPref) : {};
+    reb.vm = new FriendsVM(pref);
     reb.people = R.currentUser.get('following').models;
     R.player.on('change:playingSource', function(source) {
       // console.error(" REBECCA : we just heard from 'playingSource' with : ", source);
@@ -707,8 +720,15 @@ var reb = {
     });
     ko.applyBindings(reb.vm);
     setInterval(reb.tickThatTime, 1000*10);
-    reb.restoreSavedOrder();
+    if (reb.vm.sortOrder() == 'manual') {
+      reb.restoreSavedOrder();
+    }
   },
+  sortAllByTime: _.debounce(function(){
+    reb.vm.friends.sort(function(a, b) {
+      return -1 * (a.time()|| "0000").localeCompare(b.time() || "0000");
+    })
+  }, 1000),
   buildRef: function(vm, callback) {
     return function() {
       var args = [].slice.call(arguments);
@@ -750,6 +770,14 @@ var reb = {
       // dogs
       reb.handlePlaySingle(vm, null, vm.key())
     }
+
+    if (reb.vm.syncedUser() == vm.key() && reb.vm.endTrackBehavior() == 'follow') {
+      if (R.player.isMaster()) {
+        reb.handlePlaySingle(vm, null, vm.key());
+      } else if (reb.vm.masterBehavior() == 'track' || reb.vm.masterBehavior() == 'aggressive') {
+        reb.handlePlaySingle(vm, null, vm.key());
+      }
+    }
   },
   handleOnlineChange: function(vm, online) {
     console.log("Arguments for 'handleOnlineChange' : ",arguments, " [[ ",vm.name(),"]]");
@@ -758,11 +786,33 @@ var reb = {
   handleSongTimeChange: function(vm, timeStr) {
     // TODO : log the track as a repeat if we don't get a sufficiantly soon track change
     console.log("Arguments for 'handleSongTimeChange' : ",arguments, " [[ ",vm.name(),"]]");
+    var isLoading = _.isNull(vm.time());
     vm.time(timeStr);
+
+    if (reb.vm.syncedUser() == vm.key() && reb.vm.endTrackBehavior() == 'follow') {
+      if (R.player.isMaster()) {
+        reb.handlePlaySingle(vm, null, vm.key());
+      } else if (reb.vm.masterBehavior() == 'track' || reb.vm.masterBehavior() == 'aggressive') {
+        reb.handlePlaySingle(vm, null, vm.key());
+      }
+    }
+    if (!isLoading && reb.vm.sortOrder() == 'time') {
+      vm.moveToTop();
+    } else if (reb.vm.sortOrder() == 'time') {
+      reb.sortAllByTime();
+    }
   },
   handleSourceChange: function(vm, source) {
     console.log("Arguments for 'handleSourceChange' : ",arguments, " [[ ",vm.name(),"]]");
     vm.source(reb.extractSourceData(source));
+
+    if (reb.vm.syncedUser() == vm.key() && reb.vm.endTrackBehavior() == 'follow') {
+      if (R.player.isMaster()) {
+        reb.handlePlaySingle(vm, null, vm.key());
+      } else if (reb.vm.masterBehavior() != 'never') {
+        reb.handlePlaySingle(vm, null, vm.key());
+      }
+    }
   },
   extractSourceData: function(source){
     if (source)
@@ -849,7 +899,12 @@ R.ready(reb.start)
   <li>aggressively steal master  &#8619;
   <li>never steal master &#8622;
   <li>steal master on track transition &#8621;
+  <li>steal master on source transition &#8606;
 
+  <br><br>
+  The order of the users displayed is:
+    <input type="radio" name="click_order" value="manual" data-bind="checked: sortOrder" /> Manual
+    <input type="radio" name="click_order" value="time" data-bind="checked: sortOrder" /> Most recent
   <br><br>
   Hover to the left of the track name to reveal the play button <div class="play-button" style="opacity: 1">&#9835;</div>. Play behavior:<br>
     <input type="checkbox" value="sample" data-bind="checked: playBehaviors" />Jump in the middle of clicked track<br>
