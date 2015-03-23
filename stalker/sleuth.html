@@ -113,6 +113,7 @@ function FriendsVM(){
 var reb = {
   vm: null,             // created in followReady
   vmFriendLookup: {},   // look up users by id
+  graphData: {},
   now: new Date(),
   svg: d3.select("#showThings"),
                                           // blue    orange    green    red       purple
@@ -132,12 +133,52 @@ var reb = {
   },
   scrapeHistory: function(vm) {
     // TODO : don't nuke these! we just need to shuffle things around...
-    reb.svg.selectAll('g').remove();
+    var userNode = reb.svg.selectAll("g."+vm.key())
+    userNode.selectAll('g').remove();
     reb.svg.selectAll('circle').remove();
-    reb.svg.selectAll('image').remove();
+    // reb.svg.selectAll('image').remove();
     console.log("Trying to get history for "+vm.key())
+    if (reb.graphData[vm.key()]) {
+      reb.graphData[vm.key()].history = [];
+    } else {
+      reb.graphData[vm.key()] = {
+        icon: vm.icon(),
+        history: [],
+        key: vm.key()
+      }
+    }
     vm.history.removeAll();
     reb.haulInAHistoryLoad(vm.key(), 0)
+  },
+  haulInAHistoryLoad: function(userKey, start) {
+    console.log("Doing a pull for "+userKey+", starting at "+start);
+    R.request({
+      method: 'getHistoryForUser',
+      content: {
+        user: userKey,
+        start: start,
+        count: 10,
+        extras: ['-*', 'key'],
+        v: '20150310'
+      },
+      success: function(resp){
+        console.log("yo yo there", resp);
+        console.log("done yet?", resp.result.doneLoading);
+        reb.processSources(userKey, resp.result.sources);
+        if (resp.result.doneLoading) {
+          console.log("looks like we're all done!");
+          return;
+        }
+        var lastTx = resp.result.last_transaction
+        if (lastTx >= reb.vm.maxLoad()) {
+          console.log("Artificially clipping at "+reb.MAX_HISTORY+"!");
+          return;
+        }
+        _.delay(function() {
+          reb.haulInAHistoryLoad(userKey, lastTx);
+        }, 1000);
+      }
+    });
   },
   processSources: function(userKey, sources) {
     friendVm = reb.vmFriendLookup[userKey]
@@ -166,9 +207,13 @@ var reb = {
     console.log("Just chewed through some history, now we have : ", friendVm.history());
   },
   buildTimeScale: function(vm) {
-    var times = _.reduce(vm.history(), function(memo,record){
-      var times = _.map(record.tracks, function(t) { return t.time });
-      return memo.concat(times);
+    // TODO : omg, pull global time
+    times = _.reduce(reb.graphData, function(memo, data) { 
+      var internalData = _.reduce(data.history, function(memo,record){
+        var times = _.map(record.tracks, function(t) { return t.time });
+        return memo.concat(times);
+      }, []);
+      return memo.concat(internalData);
     }, []);
     reb.svg.selectAll(".time").remove()
     reb.svg.append("text")
@@ -204,6 +249,7 @@ var reb = {
           .text(function(d) { return d.name + ((d.count > 1) ? " " + d.count : "") ; })
     ;
     circle
+        .transition()
         .attr("cx", function(d) { return widthScale(d.index); })
         .attr("cy", function(d) { 
           var range = _.max(d.times) - _.min(d.times);
@@ -227,35 +273,41 @@ var reb = {
         })
     ;
     tracks
+      .transition()
       .attr("x", function(d, i) { 
         return (i % 2) * 20; 
       })
       .attr("y", function(d) { return timeScale(d.time); })
     ;
   },
-  drawSourceLines: function(source, timeScale) {
-    source.append("rect")
+  drawSourceLines: function(newSource, source, timeScale) {
+    newSource.append("rect")
       .attr("stroke", "none")
       .attr("class", "bar")
       .attr("x", 10)
       .attr("width", 10)
-      .attr("y", function(d) { return timeScale(d.time); })
-      .attr("height",function(d) { 
-        var h = timeScale(_.max(d.times)) - timeScale(d.time) + 5; 
-        return h;
-      })
-      .attr("width", 10)
+      .attr("y", 0)
       .attr("fill",function(d,i) {
         console.log("Painting "+i+" for "+d.name)
         return d3.rgb(reb.colorScale(d.type)).darker().toString();
       })
       .append('title')
         .text(function(d, i) { return i + " : "+ d.name + ((d.count > 1) ? d.count : "") ; })
+    ;
+    source
+      .transition()
+      .attr("y", function(d) { return timeScale(d.time); })
+      .attr("height",function(d) { 
+        var h = timeScale(_.max(d.times)) - timeScale(d.time) + 5; 
+        return h;
+      })
+    ;
   },
   updateGraph: function(vm) {
     window.reb2 = vm.history();
     var timeScale = reb.buildTimeScale(vm);
-    var data = [];
+    reb.graphData[vm.key()].history = [];   // probably be nice if we didn't do this...
+    var data = reb.graphData[vm.key()].history;
     _.each(vm.history(), function(record, index){
       r = {
         times: _.map(record.tracks, function(t) { return t.time }),
@@ -275,24 +327,33 @@ var reb = {
       });
       data.push(r);
     });
+    var userCount = _.keys(reb.graphData).length;
+    if (userCount <= 1) {
+      reb.drawCircles(data, timeScale);
+    } else {
+      // TODO : update all other entries to new time scale
+    }
 
-    reb.drawCircles(data, timeScale);
-
-    reb.svg.append("svg:image")
-      .attr("xlink:href", vm.icon())
-      .attr("x", 5)
-      .attr("y", 10)
-      .attr("width", 20)
-      .attr("height", 20)
-    var source = reb.svg.selectAll("g").data(data);
-    source.exit().remove();
-    console.log("I'm at source : "+source[0].length)
-    source.enter().append("g");
-    source.attr("transform", function(d) {
+    var userSvg = reb.svg.selectAll("g."+vm.key())
+    if (userSvg[0].length == 0) {
+      userSvg = reb.svg.append("g").attr("class", vm.key())
+      userSvg.append("svg:image")
+        .attr("xlink:href", vm.icon())
+        .attr("x", 5)
+        .attr("y", 10)
+        .attr("width", 20)
+        .attr("height", 20)
+    }
+    userSvg.attr("transform", function(d) {
+      var x = 30 * (userCount - 1);
       var y = 0;
-      var x = 0;
       return "translate(" + x + "," + y + ")";
     });
+
+    var source = userSvg.selectAll("g").data(data);
+    source.exit().remove();
+    console.log("I'm at source : "+source[0].length)
+    var newSource = source.enter().append("g");
     console.log("\t NOW I'm at source : "+source[0].length)
 
     var tracks = source.selectAll("g").data(function(d,i) {
@@ -302,37 +363,7 @@ var reb = {
     // removing all the rect is bullshit, I need to do a better job here!
     source.selectAll("rect").remove()
     reb.drawTrackTicks(tracks, timeScale);
-    reb.drawSourceLines(source, timeScale);
-  },
-  haulInAHistoryLoad: function(userKey, start) {
-    console.log("Doing a pull for "+userKey+", starting at "+start);
-    R.request({
-      method: 'getHistoryForUser',
-      content: {
-        user: userKey,
-        start: start,
-        count: 10,
-        extras: ['-*', 'key'],
-        v: '20150310'
-      },
-      success: function(resp){
-        console.log("yo yo there", resp);
-        console.log("done yet?", resp.result.doneLoading);
-        reb.processSources(userKey, resp.result.sources);
-        if (resp.result.doneLoading) {
-          console.log("looks like we're all done!");
-          return;
-        }
-        var lastTx = resp.result.last_transaction
-        if (lastTx >= reb.vm.maxLoad()) {
-          console.log("Artificially clipping at "+reb.MAX_HISTORY+"!");
-          return;
-        }
-        _.delay(function() {
-          reb.haulInAHistoryLoad(userKey, lastTx);
-        }, 1000);
-      }
-    });
+    reb.drawSourceLines(newSource,  source, timeScale);
   },
   followReady: function() {
     console.log("Following is initialized: ", R.currentUser.get('following').models);

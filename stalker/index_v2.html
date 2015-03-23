@@ -365,7 +365,7 @@
 <script>
 function FriendsVM(pref){
   this.playstate = ko.observable(R.player.PLAYSTATE_STOPPED);
-  this.masterBehavior = ko.observable('normal');
+  this.masterBehavior = ko.observable(pref.master || 'normal');
   this.isMaster = ko.observable(false);
   this.time = ko.observable();
   this.icon = ko.observable(false);
@@ -381,7 +381,12 @@ function FriendsVM(pref){
   this.syncedHistoryIndex = ko.observable(null);
   this.sortOrder = ko.observable(pref.order || 'manual');
   this.savedPlayPreferences = ko.computed(function() {
-    var val = { endTrack: this.endTrackBehavior(), play: this.playBehaviors(), order: this.sortOrder() };
+    var val = {
+      endTrack: this.endTrackBehavior(),
+      play: this.playBehaviors(),
+      master: this.masterBehavior(),
+      order: this.sortOrder()
+    };
 
     var oldPref = localStorage['stalker_play_pref'];
     if (oldPref) {
@@ -389,8 +394,7 @@ function FriendsVM(pref){
       if (oldPref.order != val.order && val.order == 'manual') {
         reb.restoreSavedOrder();
       } else if (oldPref.order != val.order) {
-        console.error("REBECCA! It is HERE that I would re-sort people's times -- is it done yet?")
-        // TODO : debounce and then resort based on the stupid times we've got
+        reb.sortAllByTime();
       }
     }
 
@@ -766,15 +770,12 @@ var reb = {
     }
     vm.startTime(new Date())
     vm.track(reb.extractTrackData(track));
-    if (reb.vm.syncedUser() == vm.key() && reb.vm.endTrackBehavior() == 'follow' && reb.vm.masterBehavior() != 'never') {
-      // dogs
-      reb.handlePlaySingle(vm, null, vm.key())
-    }
 
     if (reb.vm.syncedUser() == vm.key() && reb.vm.endTrackBehavior() == 'follow') {
       if (R.player.isMaster()) {
         reb.handlePlaySingle(vm, null, vm.key());
       } else if (reb.vm.masterBehavior() == 'track' || reb.vm.masterBehavior() == 'aggressive') {
+        console.log("\t grabbing because we are in mode "+reb.vm.masterBehavior());
         reb.handlePlaySingle(vm, null, vm.key());
       }
     }
@@ -931,5 +932,5 @@ Shout out to <a target="_blank" href="http://eavesdrop.io">eavesdrop.io</a> for 
 <br><br>
 If you notice some syncing between your friends, they're probably either using this app or over at an <a href="http://rdioparty.com/" target="_blank">Rdio Party</a> that you weren't invited to.
 <br><br><br>
-last updated: March 10th 2015
+last updated: March 23rd 2015
 </body>
