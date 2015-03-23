@@ -281,6 +281,7 @@ var reb = {
     ;
   },
   drawSourceLines: function(newSource, source, timeScale) {
+    console.log("Rebecca, I just saw ", newSource, " and ", source);
     newSource.append("rect")
       .attr("stroke", "none")
       .attr("class", "bar")
@@ -294,9 +295,11 @@ var reb = {
       .append('title')
         .text(function(d, i) { return i + " : "+ d.name + ((d.count > 1) ? d.count : "") ; })
     ;
-    source
+    source.selectAll("rect.bar")
       .transition()
-      .attr("y", function(d) { return timeScale(d.time); })
+      .attr("y", function(d) { 
+        return timeScale(d.time); 
+      })
       .attr("height",function(d) { 
         var h = timeScale(_.max(d.times)) - timeScale(d.time) + 5; 
         return h;
@@ -363,7 +366,7 @@ var reb = {
     // removing all the rect is bullshit, I need to do a better job here!
     source.selectAll("rect").remove()
     reb.drawTrackTicks(tracks, timeScale);
-    reb.drawSourceLines(newSource,  source, timeScale);
+    reb.drawSourceLines(newSource, source, timeScale);
   },
   followReady: function() {
     console.log("Following is initialized: ", R.currentUser.get('following').models);

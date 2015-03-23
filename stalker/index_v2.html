@@ -552,7 +552,7 @@ var reb = {
   handleHoverOut: function(vm, e){
     reb.vm.icon(false);
   },
-  handlePlaySingle: function(vm, e, key) {
+  handlePlaySingle: _.debounce(function(vm, e, key) {
     console.log("Rebecca, I saw a play click for\n vm: ", vm,"\n e: ", e, "\n key: ", key);
 
     // Key is only set when we're manually calling this
@@ -615,7 +615,7 @@ var reb = {
       reb.vm.playingTrack(track.key);
       R.player.play({ source: track.key, initialPosition: start_second});
     }
-  },
+  }, 500),
   followReady: function() {
     console.log("Following is initialized: ", R.currentUser.get('following').models);
     var playPref = localStorage['stalker_play_pref'];  // pretty sure this gets nuked when the VM is initialized
@@ -744,7 +744,7 @@ var reb = {
     vm.showAllHistory(!vm.showAllHistory())
   },
   handleSongChange: function(vm, track) {
-    console.log("Arguments for 'handleSongChange' : ",arguments, " [[ ",vm.name(),"]]");
+    // console.log("Arguments for 'handleSongChange' : ",arguments, " [[ ",vm.name(),"]]");
     var oldTime = vm.startTime();
     var sourceChange = false;
     if (!oldTime)
@@ -758,7 +758,7 @@ var reb = {
       var diff = new Date().getTime() - oldTime.getTime();
       var time = moment.duration(diff).humanize();
       var percent = Math.min(1, (diff/1000)/trackDuration);
-      console.warn("Tracking time... I have oldTime [",oldTime,"], diff [",diff,"], track duration [",trackDuration,"], duration [",moment.duration(diff),"], percent [",percent,"], time [",time,"], now [",new Date(),"]")
+      // console.warn("Tracking time... I have oldTime [",oldTime,"], diff [",diff,"], track duration [",trackDuration,"], duration [",moment.duration(diff),"], percent [",percent,"], time [",time,"], now [",new Date(),"]")
       var record = {
         track: vm.track(),
         source: vm.source(),
@@ -772,29 +772,34 @@ var reb = {
     vm.track(reb.extractTrackData(track));
 
     if (reb.vm.syncedUser() == vm.key() && reb.vm.endTrackBehavior() == 'follow') {
+      console.log("In changeSong, syncing with "+vm.key())
       if (R.player.isMaster()) {
         reb.handlePlaySingle(vm, null, vm.key());
+        console.log("\t > is master, playing");
       } else if (reb.vm.masterBehavior() == 'track' || reb.vm.masterBehavior() == 'aggressive') {
-        console.log("\t grabbing because we are in mode "+reb.vm.masterBehavior());
         reb.handlePlaySingle(vm, null, vm.key());
+        console.log("\t > is not master, but mode is "+reb.vm.masterBehavior());
       }
     }
   },
   handleOnlineChange: function(vm, online) {
-    console.log("Arguments for 'handleOnlineChange' : ",arguments, " [[ ",vm.name(),"]]");
+    // console.log("Arguments for 'handleOnlineChange' : ",arguments, " [[ ",vm.name(),"]]");
     vm.isOnline(online);
   },
   handleSongTimeChange: function(vm, timeStr) {
     // TODO : log the track as a repeat if we don't get a sufficiantly soon track change
-    console.log("Arguments for 'handleSongTimeChange' : ",arguments, " [[ ",vm.name(),"]]");
+    // console.log("Arguments for 'handleSongTimeChange' : ",arguments, " [[ ",vm.name(),"]]");
     var isLoading = _.isNull(vm.time());
     vm.time(timeStr);
 
     if (reb.vm.syncedUser() == vm.key() && reb.vm.endTrackBehavior() == 'follow') {
+      console.log("In changeTime, syncing with "+vm.key())
       if (R.player.isMaster()) {
         reb.handlePlaySingle(vm, null, vm.key());
+        console.log("\t > is master, playing");
       } else if (reb.vm.masterBehavior() == 'track' || reb.vm.masterBehavior() == 'aggressive') {
         reb.handlePlaySingle(vm, null, vm.key());
+        console.log("\t > is not master, but mode is "+reb.vm.masterBehavior());
       }
     }
     if (!isLoading && reb.vm.sortOrder() == 'time') {
@@ -804,14 +809,18 @@ var reb = {
     }
   },
   handleSourceChange: function(vm, source) {
-    console.log("Arguments for 'handleSourceChange' : ",arguments, " [[ ",vm.name(),"]]");
+    // console.log("Arguments for 'handleSourceChange' : ",arguments, " [[ ",vm.name(),"]]");
+    var noChange = source && vm.source() && vm.source().key == source.key
     vm.source(reb.extractSourceData(source));
 
-    if (reb.vm.syncedUser() == vm.key() && reb.vm.endTrackBehavior() == 'follow') {
+    if (reb.vm.syncedUser() == vm.key() && reb.vm.endTrackBehavior() == 'follow' && !noChange) {
+      console.log("In changeSource, syncing with "+vm.key())
       if (R.player.isMaster()) {
         reb.handlePlaySingle(vm, null, vm.key());
+        console.log("\t > is master, playing");
       } else if (reb.vm.masterBehavior() != 'never') {
         reb.handlePlaySingle(vm, null, vm.key());
+        console.log("\t > is not master, but mode is "+reb.vm.masterBehavior());
       }
     }
   },
