@@ -776,7 +776,7 @@ var reb = {
       if (R.player.isMaster()) {
         reb.handlePlaySingle(vm, null, vm.key());
         console.log("\t > is master, playing");
-      } else if (reb.vm.masterBehavior() == 'track' || reb.vm.masterBehavior() == 'aggressive') {
+      } else if (reb.vm.masterBehavior() == 'normal' || reb.vm.masterBehavior() == 'aggressive') {
         reb.handlePlaySingle(vm, null, vm.key());
         console.log("\t > is not master, but mode is "+reb.vm.masterBehavior());
       }
@@ -797,7 +797,7 @@ var reb = {
       if (R.player.isMaster()) {
         reb.handlePlaySingle(vm, null, vm.key());
         console.log("\t > is master, playing");
-      } else if (reb.vm.masterBehavior() == 'track' || reb.vm.masterBehavior() == 'aggressive') {
+      } else if (reb.vm.masterBehavior() == 'normal' || reb.vm.masterBehavior() == 'aggressive') {
         reb.handlePlaySingle(vm, null, vm.key());
         console.log("\t > is not master, but mode is "+reb.vm.masterBehavior());
       }
