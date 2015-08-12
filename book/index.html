@@ -1,0 +1,418 @@
+<html>
+  <head>
+    <script src="//cdnjs.cloudflare.com/ajax/libs/underscore.js/1.5.2/underscore-min.js"></script>
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/2.1.3/jquery.min.js"></script> 
+    <script src="moment.js"></script> 
+    <script src="latex.js"></script> 
+    <script type="text/javascript">
+      var CLIENT_ID = '476088429836-dojf7c6dnrea0r04itdfic4r3fknlqn0.apps.googleusercontent.com';
+
+      // The Browser API key obtained from the Google Developers Console.
+      // Replace with your own Browser API key, or your own key.
+      var DEVELOPER_KEY = 'AIzaSyBw_RU5aiiK4VgKpb0ypx_S9oLtx0S5LzM';
+
+      // Replace with your own App ID. (Its the first number in your Client ID)
+      var APP_ID = "476088429836";
+
+      var SCOPES = [
+          'https://www.googleapis.com/auth/drive.file',
+          'https://www.googleapis.com/auth/drive',
+          'email',
+          'profile',
+          // Add other scopes needed by your application.
+        ];
+
+      var oauthToken;
+      var comments;
+      var backup;
+      var oauth2client;
+
+      /**
+       * Check if the current user has authorized the application.
+       */
+      function checkAuth() {
+        console.log("in check auth");
+        gapi.auth.authorize(
+            {'client_id': CLIENT_ID, 'scope': SCOPES, 'immediate': true},
+            handleAuthResult);
+      }
+
+      /**
+       * Called when authorization server replies.
+       *
+       * @param {Object} authResult Authorization result.
+       */
+      function handleAuthResult(authResult) {
+        $('.status_step.auth').addClass('done');
+        console.log("in auth result : ", authResult);
+        if (authResult && !authResult.error) {
+          oauth2client = authResult
+          console.log(">> yay");
+          oauthToken = authResult.access_token;
+          createPicker();
+          // Access token has been successfully retrieved, requests can be sent to the API
+        } else {
+          console.log(">> nay");
+          // No access token could be retrieved, force the authorization flow.
+          gapi.auth.authorize(
+              {'client_id': CLIENT_ID, 'scope': SCOPES, 'immediate': false},
+              handleAuthResult);
+          oauthToken = authResult.access_token;
+          createPicker();
+        }
+      }
+
+        /**
+         * Print a file's metadata.
+         *
+         * @param {String} fileId ID of the file to print metadata for.
+         */
+         // 1XniQSnkhjSJQhbReAOhPvqXenZzIf0Aika5gyhUz7nc  is id?
+        function printFile(fileId) {
+          console.log("in print File ", fileId);
+
+          gapi.client.load('drive', 'v2', function() {
+            console.log("in the drive loaded-ness...?");
+
+            var request = gapi.client.drive.files.get({
+                'fileId': fileId
+            });
+            request.execute(function(resp) {
+              console.log("in the execute callback");
+              if (!resp.error) {
+                $('.doc_details').html('<b>File ID</b>: '+fileId+'<br><b>File Name</b>: '+resp.title+'<br>');
+                console.log(">> yay file!! ");
+                console.log('Title: ' + resp.title);
+                console.log('Description: ' + resp.description);
+                console.log('MIME type: ' + resp.mimeType);
+                console.log('exportLinks: ' + resp.exportLinks);
+                console.log("the whole thing... \n", resp);
+                downloadFile(resp.exportLinks['text/html'], handle_raw_content);
+              } else if (resp.error.code == 401) {
+                console.log(" >> 401 file");
+                // Access token might have expired.
+                checkAuth();
+              } else {
+                console.log('An error occured: ' + resp.error.message);
+              }
+            });
+
+
+            var request = gapi.client.drive.comments.list({
+                'fileId': fileId,
+                'maxResults': 100,
+            });
+            request.execute(function(resp) {
+              $('.status_step.load_c').addClass('in-progress');
+              console.log("LOADING_COMMENTS: in the comment execute callback");
+              if (!resp.error) {
+                console.log("LOADING_COMMENTS: >> yay comment!!  "+new Date());
+                console.log("LOADING_COMMENTS: the whole thing... \n", resp);
+                comments = resp.items;
+                $('.comment_count').text(comments.length);
+                if (resp.nextPageToken) {
+                  grab_even_more_comments(fileId, resp.nextPageToken);
+                }
+              } else if (resp.error.code == 401) {
+                $('.status_step.load_c').addClass('error');
+                console.log("LOADING_COMMENTS:  >> 401 file");
+                // Access token might have expired.
+                checkAuth();
+              } else {
+                $('.status_step.load_c').addClass('error');
+                console.log('LOADING_COMMENTS: An error occured (print file): '+new Date()+' ' + resp.error.message);
+              }
+            });
+
+
+          });
+        }
+
+        function grab_even_more_comments(fileId, nextPageToken) {
+            var request = gapi.client.drive.comments.list({
+                'fileId': fileId,
+                'maxResults': 100,
+                'pageToken': nextPageToken
+            }).withAuthClient(oauth2client);
+            // request.setPageToken(nextPageToken);
+            request.execute(function(resp) {
+              $('.status_step.load_c').addClass('in-progress');
+              console.log("LOADING_COMMENTS: even more comments..." + new Date());
+              if (!resp.error) {
+                console.log("LOADING_COMMENTS: the next batch... \n", resp);
+                comments = comments.concat(resp.items);
+                $('.comment_count').text(comments.length);
+                latexItSafely();
+                if (resp.nextPageToken) {
+                  grab_even_more_comments(fileId, resp.nextPageToken);
+                }
+              } else if (resp.error.code == 401) {
+                debugger;
+                $('.status_step.load_c').addClass('error');
+                console.log("LOADING_COMMENTS:  >> 401 file");
+                // Access token might have expired.
+                checkAuth();
+              } else {
+                debugger;
+                $('.status_step.load_c').addClass('error');
+                console.log('LOADING_COMMENTS: An error occured (grab even more):  '+new Date()+' ' + resp.error.message);
+              }
+            });
+        }
+
+        function handle_raw_content(x) {
+          console.debug("OH SHIT!! I JUST GOT : ",x);
+          $('.guts').html(x);
+          $('.doc_orig').html(x);
+          latexItSafely();
+        }
+
+        function downloadFile(url, callback) {
+          $('.status_step.load_f').addClass('done');
+          if (url) {
+            var accessToken = gapi.auth.getToken().access_token;
+            var xhr = new XMLHttpRequest();
+            xhr.open('GET', url);
+            xhr.setRequestHeader('Authorization', 'Bearer ' + accessToken);
+            xhr.onload = function() {
+              callback(xhr.responseText);
+            };
+            xhr.onerror = function() {
+              callback(null);
+            };
+            xhr.send();
+          } else {
+            callback(null);
+          }
+        }
+
+
+        // Create and render a Picker object for searching images.
+        function createPicker() {
+          // console.log("Grabbing test document");
+          // $('.status_step.select').addClass('done');
+          // printFile('1XniQSnkhjSJQhbReAOhPvqXenZzIf0Aika5gyhUz7nc');
+          // return
+
+          // console.log("Grabbing session 38");
+          // $('.status_step.select').addClass('done');
+          // printFile('1bhrOjaW_1b3fNcN4aXkuUDb9nLKYSJewSYoIo3zXVc8');
+          // return
+
+          // console.log("Grabbing session 13");
+          // $('.status_step.select').addClass('done');
+          // printFile('1uddywgTgSoVJgYJkNZHeO8D5Km2tFsdy1muDjwLXBag');
+          // return
+          
+          // USE THE STUFF BELOW HERE TO ACTUALLY PICK UP THE ID
+          console.log("about to pick something w/ ", oauthToken);
+          if (pickerApiLoaded && oauthToken) {
+            var view = new google.picker.View(google.picker.ViewId.DOCS);
+            // view.setMimeTypes("image/png,image/jpeg,image/jpg");
+            view.setMimeTypes("application/vnd.google-apps.document");
+            var picker = new google.picker.PickerBuilder()
+                .enableFeature(google.picker.Feature.NAV_HIDDEN)
+                .enableFeature(google.picker.Feature.MULTISELECT_ENABLED)
+                .setAppId(APP_ID)
+                .setOAuthToken(oauthToken)
+                .addView(view)
+                .addView(new google.picker.DocsUploadView())
+                // .setDeveloperKey(DEVELOPER_KEY)
+                .setCallback(pickerCallback)
+                .build();
+             picker.setVisible(true);
+          }
+        }
+
+        // A simple callback implementation.
+        function pickerCallback(data) {
+          $('.status_step.select').addClass('done');
+          console.log(" 'sup callback? ", data);
+          if (data.action == google.picker.Action.PICKED) {
+            var fileId = data.docs[0].id;
+            console.log('The user selected: ' + fileId);
+            printFile(fileId)
+          }
+        }
+
+        function onPickerApiLoad() {
+          pickerApiLoaded = true;
+          createPicker();
+        }
+        function onClientLoad() {
+          console.log("... loaded the client library?");
+        }
+
+      function loadPicker() {
+        if (!loaded_latex_js) {
+          console.error("Looks like all the JS didn't propperly load. Look into that.");
+          return;
+        }
+        $('.status_step.start').addClass('done');
+        console.log(" > load picker....");
+        gapi.load('auth', {'callback': checkAuth});
+        gapi.load('client', {'callback': onClientLoad});
+        gapi.load('picker', {'callback': onPickerApiLoad});
+      }
+
+
+    /*
+      - start with `loadPicker`
+      - eventually `handleAuthResult`
+      - `createPicker` -> `pickerCallback` -> `printFile`
+      - In parallel: `downloadFile` & grabbing comments + `grab_even_more_comments`
+      - `latexItSafely` after everything is done
+    */
+    </script>
+    <script type="text/javascript" src="https://apis.google.com/js/api.js?onload=loadPicker"></script>
+    <style>
+    .error {
+      background-color: red;
+    }
+    .in-progress {
+      background-color: yellow;
+    }
+    .done {
+      background-color: green;
+    }
+    .status_bar {
+      padding: 0px 10px 35px 0px;
+    }
+    .status_step {
+      display: inline-block;
+      border: 3px solid black;
+      padding: 10px;
+      margin: 0px;
+    }
+    .content {
+      vertical-align: top;
+    }
+    .col {
+      display: inline-block;
+      width: 49%;
+      vertical-align: top;
+    }
+    .guts, .results {
+      border-right: 1px solid black;
+    }
+    .comment-in-question {
+      font-family: monospace;
+      background-color: rgba(142, 183, 212, 0.42);
+    }
+    .comment-contrast td {
+      width: 49%;
+    }
+    .comment-contrast {
+      border: 1px solid black;
+      padding: 0px 30px;
+      margin-bottom: 15px;
+    }
+    .bad {
+      background-color: rgba(177, 87, 87, 0.39);
+    }
+    .good {
+      background-color: rgba(124, 181, 124, 0.44);
+    }
+    .problems li {
+      margin-bottom: 15px;
+    }
+    .header {
+      display: none;
+    }
+    .output-option {
+      margin-left: 20px;
+      margin-right: 0px;
+    }
+    </style>
+
+    <title>Google Doc to LaTeX Exporter</title>
+  </head>
+  <body>
+
+    <h2>Google Doc Exporter</h2>
+
+    <div class="status_bar">
+      <div class="status_step start">Start
+      </div><div class="status_step auth">Authenticating
+      </div><div class="status_step select">Select File
+      </div><div class="status_step load_f">Load File
+      </div><div class="status_step load_c">Load All Comments (<span class="comment_count"><!-- dynamically added later --></span>)
+      </div><div class="status_step pre_comments">Pre-Comment Matching
+      </div><div class="status_step scrub">LaTeX character scrub
+      </div><div class="status_step markup">LaTex markup
+      </div><div class="status_step results">Done
+      </div>
+    </div>
+
+    <div class="doc_details">
+      <!-- dynamically added later -->
+    </div>
+    <div class="results col">
+      <textarea class="latex" style="margin: 0px; width: 95%; height: 75%;"></textarea> 
+      <br>
+      <div class="options">
+        <input type="radio" class="output-option" value="both" name="output" checked onclick="determine_output()">
+          Stand alone (header + chapter)
+        <input type="radio" class="output-option" value="chap-only" name="output" onclick="determine_output()">
+          Just chapter
+        <input type="radio" class="output-option" value="header-only" name="output" onclick="determine_output()">
+          Header + <input type="text" size="2"> files
+      </div>
+      LaTeX file: <span class="text-length">0</span> characters
+    </div>
+    <div class="problems col">
+      <!-- dynamically added later -->
+    </div>
+    <hr>
+    <div class="content">
+      <div class="guts col">
+        <!-- dynamically added later -->
+      </div>
+      <div class="doc_orig col">
+        <!-- dynamically added later -->
+      </div>
+    </div>
+    <div class="header">
+\documentclass[10pt]{book}
+\usepackage{color}
+\usepackage{soul}
+\usepackage{titlesec}
+\setlength{\parindent}{5mm} % Default is 15pt
+\setlength{\parskip}{5mm}
+\titleformat{\chapter}[display]  {\large\filcenter}{\MakeUppercase{\chaptertitlename}~\thechapter}{0pt}{\huge}[\vspace{-40pt}]
+\renewcommand{\chaptertitlename}{Session}
+\usepackage{geometry}
+\geometry{
+ a5paper,
+ bottom=20mm,
+ left=10mm,
+ right=10mm,
+ top=20mm,
+ bindingoffset=2cm,
+}
+\usepackage{fancyhdr}
+\fancypagestyle{mainmatter}{
+  \fancyhf{}
+  \fancyhead[CE]{Session \thechapter}
+  \fancyhead[CO]{\leftmark}
+  \fancyhead[LE,RO]{\thepage}
+}
+\newcommand*{\sceneHeadline}[2][]{%
+    \noindent\makebox[\linewidth]{#1%
+    \textbf{#2}
+    \leaders\hrule height \dimexpr.5ex+.2pt\relax depth \dimexpr -.5ex+.2pt\relax \hfill\kern0pt% Right rule
+    }
+}
+\newcommand*{\jumpHeadline}[2][]{%
+    \noindent\makebox[\linewidth]{#1%
+    \leaders\hrule height \dimexpr1.5ex+0pt\relax depth \dimexpr -.5ex+1pt\relax \hfill% Left rule
+    {\MakeUppercase {\large \textbf{#2}}}
+    }
+}
+\begin{document}
+\pagestyle{mainmatter}
+\renewcommand{\chaptermark}[1]{ \markboth{#1}{} }
+\tableofcontents
+    </div>
+  </body>
+</html>
