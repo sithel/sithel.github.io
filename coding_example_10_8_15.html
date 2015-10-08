@@ -1,0 +1,85 @@
+<!--
+The first step in our hiring process is that we’d like to have you do a small coding exercise to give us a feel for how you code. The exercise is to create a simple visualization using HTML5 and JavaScript.
+
+Please time yourself to up to two hours and get as far as you can on the following:
+HTML5 Canvas Square
+  [x] create a 300x300 pixel Canvas object
+  [x] render a 40x40 pixel square into the Canvas object
+  [x] make the square draggable.
+(Target the most recent stable release of the Chrome browser.)
+
+All the code you write should be your own code. Don't use any existing frameworks to complete this task. It is fine to use architectural patterns **adapted** from existing frameworks or online examples in your own code.
+
+Apply what you think are good UI patterns/conventions for the dragging operation.
+
+Please send us your code (posting it online for us to view is best) after working on it for up to two hours, along with a description of how your code works and what architectural patterns and/or frameworks inspired your work. Please let us know what time you started and stopped the test
+-->
+
+<html>
+<head>
+<title>Concord Consortium Coding Challenge</title>
+</head>
+<body>
+  <center><canvas id="drawSpace" width="300" height="300" style="border:1px solid black;"></canvas></center>
+
+  <script langauge="JavaScript">
+    var canvasEl = document.getElementById("drawSpace");
+    var width = canvasEl.width;
+    var height = canvasEl.height;
+    var ctx = canvasEl.getContext("2d");
+    ctx.fillStyle = "#1B7ABF";  // a nice happy blue-ish color
+    var squareDim = 40;
+    var dragBuffer = 5;  // min amount of square required to say on canvas
+    var x = width/2;
+    var y = height/2;
+    var mouseX = x;
+    var mouseY = y;
+
+    var clickOffset = [0,0];
+
+    function draw() {
+      if (dragging) {
+        // I know `requestAnimationFrame` doesn't work on all browsers, but the test said to target latest Chrome
+        requestAnimationFrame(draw);
+      }
+      ctx.clearRect(0, 0, width, height);
+      x = mouseX - clickOffset[0]
+      y = mouseY - clickOffset[1]
+      // to prevent "losing" the square
+      x = Math.max(dragBuffer - squareDim/2, Math.min(width + squareDim/2 - dragBuffer, x))
+      y = Math.max(dragBuffer - squareDim/2, Math.min(height + squareDim/2 - dragBuffer, y))
+      ctx.fillRect(x - squareDim/2, y - squareDim/2, squareDim, squareDim);
+    }
+    // initial drawing
+    var dragging = false;
+    draw();
+
+    function clickInsideSquare(clickX, clickY) {
+      if (clickX < x - squareDim/2 || clickX > x + squareDim/2) {
+        return false;
+      }
+      if (clickY < y - squareDim/2 || clickY > y + squareDim/2) {
+        return false;
+      }
+      return true;
+    }
+    document.body.addEventListener("mousemove", function(e) {
+      mouseX = e.pageX - canvasEl.offsetLeft;
+      mouseY = e.pageY - canvasEl.offsetTop;
+    });
+    document.body.addEventListener("mouseup", function(e) {
+      dragging = false;
+    });
+    canvasEl.addEventListener("mousedown", function(e) {
+      var startingX = e.pageX - canvasEl.offsetLeft;
+      var startingY = e.pageY - canvasEl.offsetTop;
+      if (clickInsideSquare(startingX, startingY)) {
+        dragging = true;
+        clickOffset = [startingX - x, startingY - y];
+        draw();
+      }
+    });
+
+  </script>
+</body>
+</html>
